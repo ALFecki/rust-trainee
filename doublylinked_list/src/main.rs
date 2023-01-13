@@ -25,8 +25,17 @@ impl<T> Node<T> {
         self.next = Option::Some(next);
     }
 
-    pub fn set_prev(&mut self, prev: Option<Weak<RefCell<Node<T>>>>) {
-        self.prev = prev;
+    // pub fn set_prev(&mut self, prev: Option<Weak<RefCell<Node<T>>>>) {
+    //     self.prev = prev;
+    // }
+}
+
+impl<T> Iterator for Node<T> where T: Copy {
+    type Item = Rc<RefCell<Node<T>>>;
+
+    fn next(&mut self) -> Option<Rc<RefCell<Node<T>>>> {
+        
+        return self.next.clone();
     }
 }
 
@@ -35,6 +44,8 @@ struct DoublyLinkedList<T> {
     last : Option<Rc<RefCell<Node<T>>>>,
     len : usize
 }
+
+
 
 impl<T> DoublyLinkedList<T> {
     pub fn new() -> Self {
@@ -75,32 +86,31 @@ impl<T> DoublyLinkedList<T> {
         }
     }
     
-    // fn get_at(&self,index: &usize) -> Result<&T, &'static str> {
-    //     if index > &self.len {
-    //         return Err("Index out of range");
-    //     }
-    //     let mut element = self.first.clone();
-    //     let mut counter = 0;
-    //     while counter != self.len {
-    //         if counter == *index {
-    //             return Ok();
-    //         }
-    //     }
-    //     return Err("No such element in list");
-        
-    // }
+
+    fn get_at(&self, index: usize) -> Rc<RefCell<Node<T>>> {
+        let mut iterator = self.first.iter();
+        let mut element = iterator.next();
+        let mut counter = 0;
+        while (counter != self.len - 1 && counter != index) {
+            element = iterator.next();
+            counter += 1;
+        }
+        return element.unwrap().clone();
+    }
 }
 
 fn main() {
     let mut list :DoublyLinkedList<i32> = DoublyLinkedList::new();
     list.append(32);
-    let data = list.first.as_ref().unwrap().as_ref().borrow().data;
-    println!("{}",data);
     list.append(23);
-    let data = list.first.as_ref().unwrap().as_ref().borrow().next.as_ref().unwrap().as_ref().borrow().data;
-    println!("{}",data);
-    list.append(6);
-    list.append(2);
+    list.append(7);
+    println!("Element {}", list.get_at(1).as_ref().borrow().data);
+
+    // println!("{}",data);
+    // list.append(String::from("23"));
+    // let data = &list.first.as_ref().unwrap().as_ref().borrow().next.as_ref().unwrap().as_ref().borrow().data;
+    // println!("{}",data);
+    // list.append(String::from("6"));
     // println!("Elements: {}, {}, {}, {}", list.get_at(&0), list.get_at(&2), list.get_at(&3), list.get_at(&4))
     
 }
