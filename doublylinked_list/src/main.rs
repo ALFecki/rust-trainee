@@ -69,6 +69,9 @@ impl<T> DoublyLinkedList<T> where T: Copy  {
     
 
     fn get_at(&self, index: usize) -> T {
+        if index > self.len {
+            panic!("Index out of range");
+        }
         let mut element = self.first.clone();
         let mut counter = 0;
         while counter != self.len && counter != index {

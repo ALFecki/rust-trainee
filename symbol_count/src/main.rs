@@ -16,19 +16,12 @@ fn main() {
         user_string.clear();
         match io::stdin().read_line(&mut user_string) {
             Ok(n) => {
-                if n < 3 {
+                if user_string == "\r\n" {
                     break;
                 }
-                if n > 3 {
-                    println!("String is too long, we need 1 symbol");
-                } else {
-                    let symbol = user_string.chars().next().unwrap();
-                    let unique = unique_symbol(&symbol, &table);
-                    if unique {
-                        println!("Symbol {symbol} is unique");
-                    } else {
-                        println!("Symbol {symbol} is not unique or doesn't exist");
-                    }
+                match unique_symbol(&user_string, &table) {
+                    true => println!("Symbol is unique"),
+                    false => println!("Symbol isn't unique"),
                 }
             }
             Err(_) => println!("Error reading string"),
@@ -36,9 +29,13 @@ fn main() {
     }
 }
 
-fn unique_symbol(symbol: &char, table: &HashMap<char, i32>) -> bool {
-    if table.contains_key(symbol) {
-        if table.get_key_value(symbol) == Some((&symbol, &1)) {
+fn unique_symbol(str: &String, table: &HashMap<char, i32>) -> bool {
+    if str.chars().count() > 3 {
+        println!("String is too long, we need 1 symbol");
+    }
+    let symbol = str.chars().next().unwrap();
+    if table.contains_key(&symbol) {
+        if table.get_key_value(&symbol) == Some((&symbol, &1)) {
             return true;
         }
     }
@@ -49,9 +46,6 @@ fn symbol_count(str: &String) -> HashMap<char, i32> {
     let mut table: HashMap<char, i32> = HashMap::new();
     let chars = str.chars();
     for symbol in chars {
-        if symbol == '\n' || symbol == '\r' {
-            continue;
-        }
         table
             .entry(symbol)
             .and_modify(|counter| *counter += 1)
