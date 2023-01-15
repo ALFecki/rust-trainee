@@ -32,6 +32,7 @@ fn main() {
 fn unique_symbol(str: &String, table: &HashMap<char, i32>) -> bool {
     if str.chars().count() > 3 {
         println!("String is too long, we need 1 symbol");
+        return false;
     }
     let symbol = str.chars().next().unwrap();
     if table.contains_key(&symbol) && table.get_key_value(&symbol) == Some((&symbol, &1)) {

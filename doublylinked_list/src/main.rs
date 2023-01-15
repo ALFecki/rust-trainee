@@ -75,7 +75,9 @@ where
                     RefCell::new(
                         Node::new_with_prev(
                             element, &self.last
-                        )));
+                        )
+                    )
+                );
                 
                 self.last
                     .as_deref()
@@ -90,9 +92,11 @@ where
     }
 
     fn get_at(&self, index: usize) -> T {
-        if index > self.len {
+        
+        if index > self.len || index < 0 {
             panic!("Index out of range");
         }
+
         let mut element = self.first.clone();
         let mut counter = 0;
 
@@ -100,7 +104,7 @@ where
             element = element.unwrap().as_ref().borrow().next.clone();
             counter += 1;
         }
-        
+
         return element.as_ref().unwrap().borrow().data.clone();
     }
 }
