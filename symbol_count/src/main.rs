@@ -21,7 +21,7 @@ fn main() {
                 }
                 match unique_symbol(&user_string, &table) {
                     true => println!("Symbol is unique"),
-                    false => println!("Symbol isn't unique"),
+                    false => println!("Symbol isn't unique or doesn't exist"),
                 }
             }
             Err(_) => println!("Error reading string"),
@@ -34,10 +34,8 @@ fn unique_symbol(str: &String, table: &HashMap<char, i32>) -> bool {
         println!("String is too long, we need 1 symbol");
     }
     let symbol = str.chars().next().unwrap();
-    if table.contains_key(&symbol) {
-        if table.get_key_value(&symbol) == Some((&symbol, &1)) {
-            return true;
-        }
+    if table.contains_key(&symbol) && table.get_key_value(&symbol) == Some((&symbol, &1)) {
+        return true;
     }
     return false;
 }
