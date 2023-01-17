@@ -1,5 +1,6 @@
 use crate::operations::{Add, Division, Multiplication, Subtraction};
-#[derive(PartialEq, PartialOrd)]
+use crate::Operations;
+
 pub struct Calculator {
     result: Option<i32>,
 }
@@ -13,12 +14,12 @@ impl Calculator {
         return self.result.unwrap();
     }
 
-    pub fn parse_operation(&mut self, first: i32, second: i32, operation: char) {
+    pub fn parse_operation(&mut self, first: i32, second: i32, operation: Operations) {
         self.result = match operation {
-            '+' => Some(Calculator::add(first, second)),
-            '-' => Some(Calculator::sub(first, second)),
-            '*' => Some(Calculator::multiply(first, second)),
-            '/' => Some(Calculator::divide(first, second)),
+            Add => Some(Calculator::add(first, second)),
+            Subtraction => Some(Calculator::sub(first, second)),
+            Multiplication => Some(Calculator::multiply(first, second)),
+            Division => Some(Calculator::divide(first, second)),
             _ => todo!(),
         }
     }
