@@ -24,10 +24,10 @@ impl Calculator {
     }
 }
 
-impl Add<i32> for Calculator {
-    type Result = i32;
+impl<T> Add<T> for Calculator {
+    type Result = T;
 
-    fn add(first: i32, other: i32) -> Self::Result {
+    fn add(first: T, other: T) -> Self::Result {
         return first + other;
     }
 }
