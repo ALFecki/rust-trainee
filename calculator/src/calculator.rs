@@ -1,29 +1,29 @@
-use crate::operations::{Add, Division, Multiplication, Subtraction, self};
-use crate::Operations;
+use crate::operations::{Add, Division, Multiplication, Subtraction};
+use crate::Operation;
 
 pub struct Calculator<T: num::Num> {
     result: Option<T>,
 }
 
-impl<T: num::Num> Calculator<T> {
+impl<T: num::Num + Clone> Calculator<T> {
     pub fn new() -> Self {
         Self { result: None }
     }
 
-    pub fn get_result(self) -> T {
-        return self.result.unwrap();
+    pub fn get_result(&self) -> T {
+        return self.result.as_ref().unwrap().clone();
     }
 
-    pub fn parse_operation(&mut self, first: T, second: T/*, operation: T*/) {
-    // where T: Add + Subtraction + Multiplication + Division {
-        self.result = Some(first.add(second));
-        // self.result = match operation {
-        //      => Some(first.add(second)),
-        //     Subtraction => Some(Calculator::sub(first, second)),
-        //     Multiplication => Some(Calculator::multiply(first, second)),
-        //     Division => Some(Calculator::divide(first, second)),
-        //     _ => todo!(),
-        // }
+    pub fn parse_operation(&mut self, first: T, operation: &Operation, second: T) {
+        // where T: Add + Subtraction + Multiplication + Division {
+
+        self.result = match operation {
+            Operation::Add => Some(first.add(second)),
+            Operation::Subtraction => Some(first.sub(second)),
+            Operation::Multiplication => Some(first.multiply(second)),
+            Operation::Division => Some(first.divide(second)),
+            Operation::Clear => None
+        }
     }
 }
 
