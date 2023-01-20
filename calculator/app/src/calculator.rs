@@ -1,13 +1,17 @@
-use crate::operations::{Add, Division, Multiplication, Subtraction};
+use crate::operations::{Division, Multiplication, Subtraction};
 use crate::Operation;
 
+use add::Add;
+
 pub struct Calculator<T: num::Num> {
+    first: Option<T>,
+    second: Option<T>,
     result: Option<T>,
 }
 
 impl<T: num::Num + Clone> Calculator<T> {
     pub fn new() -> Self {
-        Self { result: None }
+        Self { first: None, second: None, result: None }
     }
 
     pub fn get_result(&self) -> T {
@@ -27,11 +31,11 @@ impl<T: num::Num + Clone> Calculator<T> {
     }
 }
 
-impl<T: num::Num> Add for T {
-    type Result = T;
+impl<T: num::Num> Add for Option<T> {
+    type Result = Option<T>;
 
-    fn add(self, other: T) -> Self::Result {
-        return self + other;
+    fn add(self, other: Option<T>) -> Self::Result {
+        return self.unwrap() + other;
     }
 }
 

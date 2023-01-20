@@ -1,5 +1,6 @@
-use std::io::Stdin;
+extern crate add;
 
+use std::io::Stdin;
 use calculator::Calculator;
 
 mod calculator;

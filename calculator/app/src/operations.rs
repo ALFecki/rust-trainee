@@ -1,10 +1,5 @@
 
 
-pub trait Add<Rhs = Self> {
-    type Result;
-
-    fn add(self, second: Rhs) -> Self::Result;
-}
 
 pub trait Subtraction<Rhs = Self> {
     type Result;
