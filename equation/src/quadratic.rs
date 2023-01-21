@@ -1,4 +1,4 @@
-use std::ops::Add;
+use std::ops::{Add, Mul, Sub};
 
 use regex::Regex;
 
@@ -110,3 +110,18 @@ impl Add for Quadratic {
         Quadratic::new_from_coeffs(self.a + rhs.a, self.b + rhs.b, self.c + rhs.c)
     }
 }
+
+impl Sub for Quadratic {
+    type Output = Quadratic;
+    fn sub(self, rhs: Self) -> Self::Output {
+        Quadratic::new_from_coeffs(self.a - rhs.a, self.b - rhs.b, self.c - rhs.c)
+    }
+}
+
+// impl Mul for Quadratic {
+//     type Output = Quadratic;
+//     fn mul(self, rhs: Self) -> Self::Output {
+//         Quadratic::new_from_coeffs(self.a * rhs.a, self.b * rhs.b, self.c * rhs.c)
+
+//     }
+// }
