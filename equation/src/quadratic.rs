@@ -12,9 +12,9 @@ impl Quadratic {
 
 
     pub fn new(expr: &str) -> Self {
-        let mut terms_vec = Self::split_string(expr);
+        let terms_vec = Self::split_string(expr);
 
-        let mut coeffs = Self::parse_terms(terms_vec);
+        let coeffs = Self::parse_terms(terms_vec);
 
         return Quadratic {
             a: coeffs.0,

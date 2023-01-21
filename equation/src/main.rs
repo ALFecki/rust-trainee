@@ -1,4 +1,4 @@
-use regex::Regex;
+
 use quadratic::Quadratic;
 
 mod quadratic;
