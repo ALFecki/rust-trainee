@@ -175,20 +175,85 @@ impl Div for Quadratic {
             Ok(res) => res,
             Err(_) => (0.0, 0.0)
         }; 
+        if self_solves.0 == rhs_solves.0 {
+            return QuadraticDivision {
+                a: self.a,
+                x1: self_solves.1,
+                a1: rhs.a,
+                x3: rhs_solves.1,
+                x2: 0.0,
+                x4: 0.0
+            }
+        } else if self_solves.0 == rhs_solves.1 {
+             return QuadraticDivision {
+                a: self.a,
+                x1: self_solves.1,
+                a1: rhs.a,
+                x3: rhs_solves.0,
+                x2: 0.0,
+                x4: 0.0
+            };
+        } else if self_solves.1 == rhs_solves.0 {
+            return QuadraticDivision {
+                a: self.a,
+                x1: self_solves.0,
+                a1: rhs.a,
+                x3: rhs_solves.1,
+                x2: 0.0,
+                x4: 0.0
+            };
 
-        todo!()
+        } else if self_solves.1 == rhs_solves.1 {
+            return  QuadraticDivision {
+                a: self.a,
+                x1: self_solves.0,
+                a1: rhs.a,
+                x3: rhs_solves.0,
+                x2: 0.0,
+                x4: 0.0
+            };
+        } else {
+            return QuadraticDivision {
+                a: self.a,
+                x1: self_solves.0,
+                x2: self_solves.1,
+                a1: rhs.a,
+                x3: rhs_solves.0,
+                x4: rhs_solves.1
+            }
+        }
 
     }
 }
 
 
-pub struct QuadraticDivision { // (ax^2 + bx + c) / (a1x^2 + b1x + c) otherwise (ax - x_solve) / (a1x - x1_solve)
+pub struct QuadraticDivision { // a(x - x1)(x - x2) / a1(x - x3)(x - x4) otherwise a(x - x1) / a1(x - x3)
     a: f64,
-    b: f64,
-    c: f64,
+    x1: f64,
+    x2: f64,
     a1: f64,
-    b1: f64,
-    c1: f64,
-    x_solve: f64,
-    x1_solve: f64
+    x3: f64,
+    x4: f64
+}
+
+impl QuadraticDivision {
+    pub fn print(&self) {
+        let mut string_for_print = String::new();
+        if self.x1 == 0.0 && self.x2 == 0.0 {
+            string_for_print = self.a.to_string() + "(x - " + self.x1.to_string().as_str() + ") / " + self.a1.to_string().as_str() + "(x - " + self.x3.to_string().as_str() + ")";
+        }
+        if self.x2 == 0.0 && self.x4 == 0.0 {
+            // string_for_print += self.a.to_string() + "(x - " + self.x1.to_string().as_str() + ") / " + self.a1.to_string().as_str() + "(x - " + self.x3.to_string().as_str() + ")";
+        }
+
+
+        // if self.x2 == 0.0 && self.x4 == 0.0 {
+        //     println!("{}(x - {}) / {}(x - {})", self.a, self.x1, self.a1, self.x3);
+        // } else if self.x1 == 0.0 && self.x2 == 0.0 || self.x3 == 0.0 && self.x4 == 0.0 {
+        //
+        // } else {
+        //
+        //     println!("{}(x - {}) * (x - {}) / {}(x - {}) * (x - {})", self.a, self.x1, self.x2, self.a1, self.x3, self.x4);
+        // }
+    }
 }

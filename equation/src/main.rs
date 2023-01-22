@@ -20,4 +20,7 @@ fn main() {
     let d = a * b;
     d.print();
 
+    let e = a / b;
+    // e.print()
+
 }
