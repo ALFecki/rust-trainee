@@ -1,11 +1,13 @@
 use std::{
-    fmt::Error,
     ops::{Add, Mul, Sub},
 };
 
 use lazy_static::lazy_static;
 use regex::Regex;
 
+use crate::biquadratic::Biquadratic;
+
+#[derive(Clone, Copy)]
 pub struct Quadratic {
     a: f64,
     b: f64,
@@ -134,10 +136,15 @@ impl Sub for Quadratic {
     }
 }
 
-// impl Mul for Quadratic {
-//     type Output = Quadratic;
-//     fn mul(self, rhs: Self) -> Self::Output {
-//         Quadratic::new_from_coeffs(self.a * rhs.a, self.b * rhs.b, self.c * rhs.c)
-
-//     }
-// }
+impl Mul for Quadratic {
+    type Output = Biquadratic;
+    fn mul(self, rhs: Self) -> Self::Output {
+        Biquadratic::new_from_coeffs(
+            self.a * rhs.a,
+            self.a * rhs.b + self.b * rhs.a,
+            self.a * rhs.c  + self.b * rhs.b + self.c * rhs.a,
+            self.b * rhs.c + self.c * rhs.b,
+            self.c * rhs.c
+        )
+    }
+}

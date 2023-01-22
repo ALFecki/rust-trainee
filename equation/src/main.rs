@@ -3,6 +3,7 @@ use quadratic::Quadratic;
 use regex::Regex;
 
 mod quadratic;
+mod biquadratic;
 
 
 fn main() {
@@ -15,12 +16,7 @@ fn main() {
     c.add_number(4);
     c.print();
 
-
-    // let reg = Regex::new(r"(?P<f>\d+\w\^2)|(?P<s>\d+\w)|(?P<t>\d+)").unwrap();
-    // // let names = reg.capture_names();
-    // let g = reg.captures("2x").unwrap();
-    
-    // println!("{:?}", &g["s"]);
-    // println!("{}", reg.is_match("+ 3x"));
+    let d = a * b;
+    d.print();
 
 }
