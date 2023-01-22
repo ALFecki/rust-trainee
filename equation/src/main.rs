@@ -16,10 +16,11 @@ fn main() {
     c.print();
 
 
-    let reg = Regex::new(r"(?P<f>\d+\w\^2)|(?P<s>\d+\w)|(?P<t>\d+)").unwrap();
-    // let names = reg.capture_names();
-    let g = reg.captures("2x^2 + 3x + 1").unwrap();
-    println!("{}, {}, {:?}", &g[0], &g[1], g.name("s"));
+    // let reg = Regex::new(r"(?P<f>\d+\w\^2)|(?P<s>\d+\w)|(?P<t>\d+)").unwrap();
+    // // let names = reg.capture_names();
+    // let g = reg.captures("2x").unwrap();
+    
+    // println!("{:?}", &g["s"]);
     // println!("{}", reg.is_match("+ 3x"));
 
 }

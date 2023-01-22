@@ -1,7 +1,10 @@
-use std::ops::{Add, Mul, Sub};
+use std::{
+    fmt::Error,
+    ops::{Add, Mul, Sub},
+};
 
-use regex::Regex;
 use lazy_static::lazy_static;
+use regex::Regex;
 
 pub struct Quadratic {
     a: f64,
@@ -10,12 +13,15 @@ pub struct Quadratic {
 }
 
 impl Quadratic {
-
-
     pub fn new(expr: &str) -> Self {
         let terms_vec = Self::split_string(expr);
 
-        let coeffs = Self::parse_terms(terms_vec);
+        let coeffs = match Self::parse_terms(terms_vec) {
+            Ok(result) => result,
+            Err(str) => {
+                panic!("Error: {}", str);
+            }
+        };
 
         return Quadratic {
             a: coeffs.0,
@@ -39,19 +45,21 @@ impl Quadratic {
         return terms_vec;
     }
 
-    fn parse_terms(terms_vec: Vec<&str>) -> (f64, f64, f64) {
+    fn parse_terms(terms_vec: Vec<&str>) -> Result<(f64, f64, f64), &str> {
         let mut coeffs = (0.0, 0.0, 0.0);
+
         lazy_static! {
-            static ref REGEX : (Regex, Regex, Regex) = (
-                Regex::new(r"(\d+\w\^2)").unwrap(),
-                Regex::new(r"(\d+\w)").unwrap(),
-                Regex::new(r"(\d+)").unwrap()
-            );
+            static ref REGEX: Regex =
+                Regex::new(r"(?P<first>\d+\w\^2)|(?P<second>\d+\w)|(?P<third>\d+)").unwrap();
         }
 
-        
         for term in terms_vec {
-            if REGEX.0.is_match(term) {
+            let caps = match REGEX.captures(term) {
+                Some(captures) => captures,
+                None => return Err("Cannot read equation terms"),
+            };
+
+            if caps.name("first").is_some() {
                 let coeff = term
                     .get(
                         term.find(|c: char| c.is_ascii_digit()).unwrap()
@@ -65,7 +73,7 @@ impl Quadratic {
                 } else {
                     coeffs.0 += coeff;
                 }
-            } else if REGEX.1.is_match(term) {
+            } else if caps.name("second").is_some() {
                 let coeff = term
                     .get(
                         term.find(|c: char| c.is_ascii_digit()).unwrap()
@@ -79,10 +87,12 @@ impl Quadratic {
                 } else {
                     coeffs.1 += coeff;
                 }
-            } else {
-                // println!("{term}: {left} - {right}");
+            } else if caps.name("third").is_some() {
                 let coeff = term
-                    .get(term.find(|c: char| c.is_ascii_digit()).unwrap()..term.trim().chars().count())
+                    .get(
+                        term.find(|c: char| c.is_ascii_digit()).unwrap()
+                            ..term.trim().chars().count(),
+                    )
                     .unwrap()
                     .parse::<f64>()
                     .unwrap(); // todo if expression is ending with space
@@ -94,7 +104,7 @@ impl Quadratic {
                 }
             }
         }
-            return coeffs;
+        return Ok(coeffs);
     }
 
     fn new_from_coeffs(a: f64, b: f64, c: f64) -> Self {
