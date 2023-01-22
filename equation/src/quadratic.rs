@@ -1,6 +1,7 @@
 use std::ops::{Add, Mul, Sub};
 
 use regex::Regex;
+use lazy_static::lazy_static;
 
 pub struct Quadratic {
     a: f64,
@@ -40,12 +41,17 @@ impl Quadratic {
 
     fn parse_terms(terms_vec: Vec<&str>) -> (f64, f64, f64) {
         let mut coeffs = (0.0, 0.0, 0.0);
-        let regex = (
-            Regex::new(r"\d+\w\^2").unwrap(),
-            Regex::new(r"\d+\w").unwrap(),
-        );
+        lazy_static! {
+            static ref REGEX : (Regex, Regex, Regex) = (
+                Regex::new(r"(\d+\w\^2)").unwrap(),
+                Regex::new(r"(\d+\w)").unwrap(),
+                Regex::new(r"(\d+)").unwrap()
+            );
+        }
+
+        
         for term in terms_vec {
-            if regex.0.is_match(term) {
+            if REGEX.0.is_match(term) {
                 let coeff = term
                     .get(
                         term.find(|c: char| c.is_ascii_digit()).unwrap()
@@ -59,7 +65,7 @@ impl Quadratic {
                 } else {
                     coeffs.0 += coeff;
                 }
-            } else if regex.1.is_match(term) {
+            } else if REGEX.1.is_match(term) {
                 let coeff = term
                     .get(
                         term.find(|c: char| c.is_ascii_digit()).unwrap()
