@@ -1,5 +1,5 @@
 use std::{
-    ops::{Add, Mul, Sub},
+    ops::{Add, Mul, Sub, Div}, result, fmt::Error,
 };
 
 use lazy_static::lazy_static;
@@ -37,7 +37,7 @@ impl Quadratic {
 
         let mut splitted_expr: (&str, &str) = (expr, "");
 
-        for i in 0..expr.matches(|c| c == '+' || c == '-').count() + 1 {
+        for _i in 0..expr.matches(|c| c == '+' || c == '-').count() + 1 {
             splitted_expr = splitted_expr
                 .0
                 .split_at(splitted_expr.0.rfind(['+', '-']).unwrap_or(0));
@@ -117,6 +117,20 @@ impl Quadratic {
         self.c += &f64::from(number);
     }
 
+    fn find_solves(&self) -> Result<(f64, f64), &str> {
+        if self.a < 0.0 {
+            return Err("Not a quadratic equation");
+        }
+        let desc = self.b.powi(2) - 4.0*self.a*self.c;
+        if desc > 0.0 {
+            return Ok(((-self.b + desc.sqrt())/4.0*self.a, (-self.b + desc.sqrt())/4.0*self.a));
+        } else if desc == 0.0 {
+            return Ok((-self.b/4.0*self.a, -self.b/4.0*self.a));
+        } else {
+            return Err("Desc is less then 0");
+        }
+    }
+
     pub fn print(&self) {
         println!("{:+}x^2 {:+}x {:+}", self.a, self.b, self.c);
     }
@@ -147,4 +161,34 @@ impl Mul for Quadratic {
             self.c * rhs.c
         )
     }
+}
+
+impl Div for Quadratic {
+    type Output = QuadraticDivision;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        let self_solves = match self.find_solves() {
+            Ok(res) => res,
+            Err(_) => (0.0, 0.0)
+        }; 
+        let rhs_solves = match rhs.find_solves() {
+            Ok(res) => res,
+            Err(_) => (0.0, 0.0)
+        }; 
+
+        todo!()
+
+    }
+}
+
+
+pub struct QuadraticDivision { // (ax^2 + bx + c) / (a1x^2 + b1x + c) otherwise (ax - x_solve) / (a1x - x1_solve)
+    a: f64,
+    b: f64,
+    c: f64,
+    a1: f64,
+    b1: f64,
+    c1: f64,
+    x_solve: f64,
+    x1_solve: f64
 }
