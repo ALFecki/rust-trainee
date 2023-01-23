@@ -12,6 +12,8 @@ pub struct Quadratic {
     a: f64,
     b: f64,
     c: f64,
+    x1: Option<f64>,
+    x2: Option<f64>
 }
 
 impl Quadratic {
@@ -24,12 +26,15 @@ impl Quadratic {
                 panic!("Error: {}", str);
             }
         };
-
-        return Quadratic {
+        let mut res = Quadratic {
             a: coeffs.0,
             b: coeffs.1,
             c: coeffs.2,
+            ..Default::default()
         };
+
+        res.find_solves();
+        return res;
     }
 
     fn split_string(expr: &str) -> Vec<&str> {
@@ -52,22 +57,24 @@ impl Quadratic {
 
         lazy_static! {
             static ref REGEX: Regex =
-                Regex::new(r"(?P<first>\d+\w\^2)|(?P<second>\d+\w)|(?P<third>\d+)").unwrap();
+                Regex::new(r"(?P<first>\d*\w\^2)|(?P<second>\d*[[:alpha:]])|(?P<third>\d+)").unwrap();
         }
 
         for term in terms_vec {
+
             let caps = match REGEX.captures(term) {
                 Some(captures) => captures,
                 None => return Err("Cannot read equation terms"),
             };
 
             if caps.name("first").is_some() {
+
                 let coeff = term
                     .get(
                         term.find(|c: char| c.is_ascii_digit()).unwrap()
                             ..term.find(|c: char| c.is_ascii_alphabetic()).unwrap(),
                     )
-                    .unwrap()
+                    .unwrap_or("1")
                     .parse::<f64>()
                     .unwrap();
                 if term.contains('-') {
@@ -81,7 +88,7 @@ impl Quadratic {
                         term.find(|c: char| c.is_ascii_digit()).unwrap()
                             ..term.find(|c: char| c.is_ascii_alphabetic()).unwrap(),
                     )
-                    .unwrap()
+                    .unwrap_or("1")
                     .parse::<f64>()
                     .unwrap();
                 if term.contains('-') {
@@ -110,29 +117,41 @@ impl Quadratic {
     }
 
     fn new_from_coeffs(a: f64, b: f64, c: f64) -> Self {
-        return Quadratic { a, b, c };
+        return Quadratic { a, b, c, ..Default::default() };
     }
 
     pub fn add_number(&mut self, number: i32) {
         self.c += &f64::from(number);
     }
 
-    fn find_solves(&self) -> Result<(f64, f64), &str> {
+    fn find_solves(&mut self) {
         if self.a < 0.0 {
-            return Err("Not a quadratic equation");
+            self.x1 = Some(-self.c);
+            self.x2 = None;
         }
         let desc = self.b.powi(2) - 4.0*self.a*self.c;
         if desc > 0.0 {
-            return Ok(((-self.b + desc.sqrt())/4.0*self.a, (-self.b + desc.sqrt())/4.0*self.a));
+            self.x1 = Some((-self.b + desc.sqrt())/(2.0 * self.a).clone());
+            self.x2 = Some((-self.b - desc.sqrt())/(2.0 * self.a).clone());
         } else if desc == 0.0 {
-            return Ok((-self.b/4.0*self.a, -self.b/4.0*self.a));
+            self.x1 = Some((-self.b/(2.0 * self.a)).clone());
+            self.x2 = None;
         } else {
-            return Err("Desc is less then 0");
+            self.x1 = None;
+            self.x2 = None;
         }
     }
 
     pub fn print(&self) {
-        println!("{:+}x^2 {:+}x {:+}", self.a, self.b, self.c);
+        if self.a != 0.0 {
+            print!("{:+}x^2 ", self.a);
+        }
+        if self.b != 0.0 {
+            print!("{:+}x ", self.b);
+        }
+        if self.c != 0.0 {
+            println!("{:+}", self.c);
+        }
     }
 }
 
@@ -166,94 +185,74 @@ impl Mul for Quadratic {
 impl Div for Quadratic {
     type Output = QuadraticDivision;
 
-    fn div(self, rhs: Self) -> Self::Output {
-        let self_solves = match self.find_solves() {
-            Ok(res) => res,
-            Err(_) => (0.0, 0.0)
-        }; 
-        let rhs_solves = match rhs.find_solves() {
-            Ok(res) => res,
-            Err(_) => (0.0, 0.0)
-        }; 
-        if self_solves.0 == rhs_solves.0 {
-            return QuadraticDivision {
-                a: self.a,
-                x1: self_solves.1,
-                a1: rhs.a,
-                x3: rhs_solves.1,
-                x2: 0.0,
-                x4: 0.0
-            }
-        } else if self_solves.0 == rhs_solves.1 {
-             return QuadraticDivision {
-                a: self.a,
-                x1: self_solves.1,
-                a1: rhs.a,
-                x3: rhs_solves.0,
-                x2: 0.0,
-                x4: 0.0
-            };
-        } else if self_solves.1 == rhs_solves.0 {
-            return QuadraticDivision {
-                a: self.a,
-                x1: self_solves.0,
-                a1: rhs.a,
-                x3: rhs_solves.1,
-                x2: 0.0,
-                x4: 0.0
-            };
-
-        } else if self_solves.1 == rhs_solves.1 {
-            return  QuadraticDivision {
-                a: self.a,
-                x1: self_solves.0,
-                a1: rhs.a,
-                x3: rhs_solves.0,
-                x2: 0.0,
-                x4: 0.0
-            };
-        } else {
-            return QuadraticDivision {
-                a: self.a,
-                x1: self_solves.0,
-                x2: self_solves.1,
-                a1: rhs.a,
-                x3: rhs_solves.0,
-                x4: rhs_solves.1
-            }
+    fn div(mut self, rhs: Self) -> Self::Output {
+        let mut res = QuadraticDivision {
+            first_equation: self,
+            second_equation: rhs
+        };
+        if self.x1.is_none() && self.x2.is_none()
+            || rhs.x1.is_none() && rhs.x2.is_none() {
+            return res;
         }
+        if self.x1 == rhs.x1 {
+            res.first_equation.x1 = None;
+            res.second_equation.x1 = None;
+        } else if self.x1 == rhs.x2 {
+            res.first_equation.x1 = None;
+            res.second_equation.x2 = None;
+        } else if self.x2 == rhs.x1 {
+            res.first_equation.x2 = None;
+            res.second_equation.x1 = None;
+        } else if self.x2 == rhs.x2 {
+            res.first_equation.x2 = None;
+            res.second_equation.x2 = None;
+        }
+        return res;
 
+    }
+}
+
+impl Default for Quadratic {
+    fn default() -> Self {
+        Quadratic {
+            a: 0.0,
+            b: 0.0,
+            c: 0.0,
+            x1: None,
+            x2: None
+        }
     }
 }
 
 
 pub struct QuadraticDivision { // a(x - x1)(x - x2) / a1(x - x3)(x - x4) otherwise a(x - x1) / a1(x - x3)
-    a: f64,
-    x1: f64,
-    x2: f64,
-    a1: f64,
-    x3: f64,
-    x4: f64
+    first_equation: Quadratic,
+    second_equation: Quadratic
 }
 
 impl QuadraticDivision {
     pub fn print(&self) {
-        let mut string_for_print = String::new();
-        if self.x1 == 0.0 && self.x2 == 0.0 {
-            string_for_print = self.a.to_string() + "(x - " + self.x1.to_string().as_str() + ") / " + self.a1.to_string().as_str() + "(x - " + self.x3.to_string().as_str() + ")";
+        if self.first_equation.x1.is_none() && self.first_equation.x2.is_none()
+            || self.second_equation.x1.is_none() && self.second_equation.x2.is_none() {
+            println!("{:+}x^2 {:+}x {:+} / {:+}x^2 {:+}x {:+}",
+                     self.first_equation.a, self.first_equation.b, self.first_equation.c,
+                        self.second_equation.a, self.second_equation.b, self.second_equation.c
+            );
+        } else {
+            print!("{}", self.first_equation.a);
+            if self.first_equation.x1.is_some() {
+                print!("( x {:+} )", -self.first_equation.x1.unwrap());
+            }
+            if self.first_equation.x2.is_some() {
+                print!("( x {:+} )", -self.first_equation.x2.unwrap());
+            }
+            print!(" / {}", self.second_equation.a);
+            if self.second_equation.x1.is_some() {
+                print!("( x {:+} )", -self.second_equation.x1.unwrap());
+            }
+            if self.second_equation.x2.is_some() {
+                print!("( x {:+} )", -self.second_equation.x2.unwrap());
+            }
         }
-        if self.x2 == 0.0 && self.x4 == 0.0 {
-            // string_for_print += self.a.to_string() + "(x - " + self.x1.to_string().as_str() + ") / " + self.a1.to_string().as_str() + "(x - " + self.x3.to_string().as_str() + ")";
-        }
-
-
-        // if self.x2 == 0.0 && self.x4 == 0.0 {
-        //     println!("{}(x - {}) / {}(x - {})", self.a, self.x1, self.a1, self.x3);
-        // } else if self.x1 == 0.0 && self.x2 == 0.0 || self.x3 == 0.0 && self.x4 == 0.0 {
-        //
-        // } else {
-        //
-        //     println!("{}(x - {}) * (x - {}) / {}(x - {}) * (x - {})", self.a, self.x1, self.x2, self.a1, self.x3, self.x4);
-        // }
     }
 }

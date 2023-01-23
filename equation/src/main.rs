@@ -6,8 +6,8 @@ mod biquadratic;
 
 
 fn main() {
-    let a = Quadratic::new("2x^2 + 3x + 1");
-    let b = Quadratic::new("3y^2 + 6 + 5y^2 + 8y");
+    let a = Quadratic::new("x^2 - 2x - 24");
+    let b = Quadratic::new("y^2 + 6 - 7y");
     a.print();
     b.print();
     
@@ -21,6 +21,6 @@ fn main() {
     d.print();
 
     let e = a / b;
-    // e.print()
+    e.print()
 
 }
