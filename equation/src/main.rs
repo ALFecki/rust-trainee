@@ -10,11 +10,13 @@ fn main() {
     let b = Quadratic::new("y^2 + 6 - 7y");
     a.print();
     b.print();
+
+    let f = a + 4;
+    f.print();
     
-    let mut c = a - b;
+    let c = a - b;
     c.print();
-    
-    c.add_number(4);
+
     c.print();
 
     let d = a * b;
