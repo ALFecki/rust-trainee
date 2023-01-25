@@ -1,6 +1,4 @@
-use std::{
-    ops::{Add, Div, Mul, Sub},
-};
+use std::ops::{Add, Div, Mul, Sub};
 
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -25,9 +23,7 @@ pub struct Quadratic {
 
 impl Quadratic {
     pub fn new(expr: &str) -> Self {
-        let terms_vec = Self::split_string(expr);
-
-        let coeffs = match Self::parse_terms(terms_vec) {
+        let coeffs = match Self::parse_terms(expr) {
             Ok(result) => result,
             Err(str) => {
                 panic!("Error: {}", str);
@@ -44,71 +40,58 @@ impl Quadratic {
         return res;
     }
 
-    fn split_string(expr: &str) -> Vec<&str> {
-        let mut terms_vec = Vec::new();
+    fn parse_terms(expr: &str) -> Result<(f64, f64, f64), &str> {
+        let mut coeffs = (0.0, 0.0, 0.0);
 
         for caps in REGEX.captures_iter(expr) {
             if let Some(cap) = caps.name("first") {
-                terms_vec.push(cap.as_str());
-            }
-            if let Some(cap) = caps.name("second") {
-                terms_vec.push(cap.as_str());
-            }
-            if let Some(cap) = caps.name("third") {
-                terms_vec.push(cap.as_str());
-            }
-        }
-        return terms_vec;
-    }
-
-    fn parse_terms(terms_vec: Vec<&str>) -> Result<(f64, f64, f64), &str> {
-        let mut coeffs = (0.0, 0.0, 0.0);
-
-        for term in terms_vec {
-            let caps = match REGEX.captures(term) {
-                Some(captures) => captures,
-                None => return Err("Cannot read equation terms"),
-            };
-
-            if let Some(_v) = caps.name("first") {
-                let coeff = term
+                let coeff = cap
+                    .as_str()
                     .get(
-                        term.find(|c: char| c.is_ascii_digit()).unwrap()
-                            ..term.find(|c: char| c.is_ascii_alphabetic()).unwrap(),
+                        cap.as_str().find(|c: char| c.is_ascii_digit()).unwrap_or(0)
+                            ..cap
+                                .as_str()
+                                .find(|c: char| c.is_ascii_alphabetic())
+                                .unwrap_or(0),
                     )
                     .unwrap_or("1")
                     .parse::<f64>()
                     .unwrap();
-                if term.contains('-') {
+                if cap.as_str().contains('-') {
                     coeffs.0 -= coeff;
                 } else {
                     coeffs.0 += coeff;
                 }
-            } else if let Some(_v) = caps.name("second") {
-                let coeff = term
+            } else if let Some(cap) = caps.name("second") {
+                let coeff = cap
+                    .as_str()
                     .get(
-                        term.find(|c: char| c.is_ascii_digit()).unwrap()
-                            ..term.find(|c: char| c.is_ascii_alphabetic()).unwrap(),
+                        cap.as_str().find(|c: char| c.is_ascii_digit()).unwrap_or(0)
+                            ..cap
+                                .as_str()
+                                .find(|c: char| c.is_ascii_alphabetic())
+                                .unwrap_or(0),
                     )
                     .unwrap_or("1")
                     .parse::<f64>()
                     .unwrap();
-                if term.contains('-') {
+                if cap.as_str().contains('-') {
                     coeffs.1 -= coeff;
                 } else {
                     coeffs.1 += coeff;
                 }
-            } else if let Some(_v) = caps.name("third") {
-                let coeff = term
+            } else if let Some(cap) = caps.name("third") {
+                let coeff = cap
+                    .as_str()
                     .get(
-                        term.find(|c: char| c.is_ascii_digit()).unwrap()
-                            ..term.trim().chars().count(),
+                        cap.as_str().find(|c: char| c.is_ascii_digit()).unwrap_or(0)
+                            ..cap.as_str().trim().chars().count(),
                     )
-                    .unwrap()
+                    .unwrap_or("1")
                     .parse::<f64>()
                     .unwrap();
 
-                if term.contains('-') {
+                if cap.as_str().contains('-') {
                     coeffs.2 -= coeff;
                 } else {
                     coeffs.2 += coeff;
