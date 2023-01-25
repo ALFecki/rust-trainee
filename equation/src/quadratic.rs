@@ -1,3 +1,4 @@
+use std::fs::read_to_string;
 use std::ops::{Add, Div, Mul, Sub};
 
 use lazy_static::lazy_static;
@@ -40,62 +41,53 @@ impl Quadratic {
         return res;
     }
 
+    fn get_term_number(cap: &str, c_flag: bool) -> Result<f64, &str> {
+        let mut res = 0.0;
+        let digit_start = cap.find(|c: char| c.is_ascii_digit()).unwrap_or(0);
+        let digit_end = if c_flag {
+            cap.trim().chars().count()
+        } else {
+            cap.find(|c: char| c.is_ascii_alphabetic()).unwrap_or(0)
+        };
+        let coeff = match cap
+            .get(digit_start..digit_end)
+            .unwrap_or("1")
+            .parse::<f64>()
+        {
+            Ok(c) => c,
+            Err(_) => return Err("Parse error"),
+        };
+        if cap.contains('-') {
+            res -= coeff;
+        } else {
+            res += coeff;
+        }
+        return Ok(res);
+    }
+
     fn parse_terms(expr: &str) -> Result<(f64, f64, f64), &str> {
         let mut coeffs = (0.0, 0.0, 0.0);
 
         for caps in REGEX.captures_iter(expr) {
             if let Some(cap) = caps.name("first") {
-                let coeff = cap
-                    .as_str()
-                    .get(
-                        cap.as_str().find(|c: char| c.is_ascii_digit()).unwrap_or(0)
-                            ..cap
-                                .as_str()
-                                .find(|c: char| c.is_ascii_alphabetic())
-                                .unwrap_or(0),
-                    )
-                    .unwrap_or("1")
-                    .parse::<f64>()
-                    .unwrap();
-                if cap.as_str().contains('-') {
-                    coeffs.0 -= coeff;
-                } else {
-                    coeffs.0 += coeff;
-                }
-            } else if let Some(cap) = caps.name("second") {
-                let coeff = cap
-                    .as_str()
-                    .get(
-                        cap.as_str().find(|c: char| c.is_ascii_digit()).unwrap_or(0)
-                            ..cap
-                                .as_str()
-                                .find(|c: char| c.is_ascii_alphabetic())
-                                .unwrap_or(0),
-                    )
-                    .unwrap_or("1")
-                    .parse::<f64>()
-                    .unwrap();
-                if cap.as_str().contains('-') {
-                    coeffs.1 -= coeff;
-                } else {
-                    coeffs.1 += coeff;
-                }
-            } else if let Some(cap) = caps.name("third") {
-                let coeff = cap
-                    .as_str()
-                    .get(
-                        cap.as_str().find(|c: char| c.is_ascii_digit()).unwrap_or(0)
-                            ..cap.as_str().trim().chars().count(),
-                    )
-                    .unwrap_or("1")
-                    .parse::<f64>()
-                    .unwrap();
 
-                if cap.as_str().contains('-') {
-                    coeffs.2 -= coeff;
-                } else {
-                    coeffs.2 += coeff;
-                }
+                coeffs.0 += match Self::get_term_number(cap.as_str(), false) {
+                    Ok(res) => res,
+                    Err(str) => return Err(&str)
+                };
+
+            } else if let Some(cap) = caps.name("second") {
+
+                coeffs.1 += match Self::get_term_number(cap.as_str(), false) {
+                    Ok(res) => res,
+                    Err(str) => return Err(&str)
+                };
+
+            } else if let Some(cap) = caps.name("third") {
+                coeffs.2 += match Self::get_term_number(cap.as_str(), true) {
+                    Ok(res) => res,
+                    Err(str) => return Err(&str)
+                };
             }
         }
         return Ok(coeffs);
