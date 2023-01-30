@@ -70,23 +70,19 @@ impl Quadratic {
 
         for caps in REGEX.captures_iter(expr) {
             if let Some(cap) = caps.name("first") {
-
                 coeffs.0 += match Self::get_term_number(cap.as_str(), false) {
                     Ok(res) => res,
-                    Err(str) => return Err(&str)
+                    Err(str) => return Err(&str),
                 };
-
             } else if let Some(cap) = caps.name("second") {
-
                 coeffs.1 += match Self::get_term_number(cap.as_str(), false) {
                     Ok(res) => res,
-                    Err(str) => return Err(&str)
+                    Err(str) => return Err(&str),
                 };
-
             } else if let Some(cap) = caps.name("third") {
                 coeffs.2 += match Self::get_term_number(cap.as_str(), true) {
                     Ok(res) => res,
-                    Err(str) => return Err(&str)
+                    Err(str) => return Err(&str),
                 };
             }
         }
