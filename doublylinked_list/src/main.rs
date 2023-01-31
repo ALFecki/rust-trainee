@@ -1,10 +1,39 @@
 use core::cell::RefCell;
+use std::borrow::{Borrow, BorrowMut};
+use std::ops::{Deref, DerefMut};
+use std::ptr::NonNull;
 use std::rc::{Rc, Weak};
 
 struct Node<T> {
-    pub data: T,
-    pub next: Option<Rc<RefCell<Node<T>>>>,
-    pub prev: Option<Weak<RefCell<Node<T>>>>,
+    data: T,
+    next: Option<Rc<RefCell<Node<T>>>>,
+    prev: Option<Weak<RefCell<Node<T>>>>,
+}
+
+struct NodeMutRef<T> {
+    data: NonNull<Node<T>>
+}
+
+impl<T> NodeMutRef<T> {
+    fn new(data: &mut Node<T>) -> Self {
+        Self {
+            data: NonNull::<Node<T>>::new(data as *mut Node<T>).expect("data is null")
+        }
+    }
+}
+
+impl<T> Deref for NodeMutRef<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { return self.data.as_ref().data.borrow(); }
+    }
+}
+
+impl<T> DerefMut for NodeMutRef<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { return  self.data.as_mut().data.borrow_mut() }
+    }
 }
 
 impl<T> Node<T> {
@@ -17,15 +46,23 @@ impl<T> Node<T> {
     }
 
     pub fn new_with_prev(element: T, prev: &Option<Rc<RefCell<Node<T>>>>) -> Self {
-        Self { 
+        Self {
             data: element,
             next: None,
-            prev: Option::Some(Rc::downgrade(prev.as_ref().unwrap()))
+            prev: Option::Some(Rc::downgrade(prev.as_ref().unwrap())),
         }
     }
 
     pub fn set_next(&mut self, next: Rc<RefCell<Node<T>>>) {
         self.next = Option::Some(next);
+    }
+}
+
+impl<T> Deref for Node<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        return self.data.borrow();
     }
 }
 
@@ -55,44 +92,36 @@ where
         match self.len {
             0 => {
                 let new_node = Node::new(element);
-                self.first = Option::Some(Rc::new(RefCell::new(new_node)));
+                self.first = Some(Rc::new(RefCell::new(new_node)));
                 self.len += 1;
             }
 
             1 => {
                 let new_node = Node::new_with_prev(element, &self.first);
-                self.last = Option::Some(Rc::new(RefCell::new(new_node)));
-                self.first
-                    .as_deref()
-                    .unwrap()
-                    .borrow_mut()
-                    .set_next(self.last.as_ref().unwrap().clone());
+                self.last = Some(Rc::new(RefCell::new(new_node)));
+                if let (Some(val_first), Some(val_last)) = (&self.first.clone(), &self.last.clone()) {
+                    // val_first.borrow_mut().get_mut().set_next(val_last);
+
+                    val_first.as_ref().borrow_mut().set_next(val_last.clone());
+                }
                 self.len += 1;
             }
 
             _ => {
-                let new_node = Rc::new(
-                    RefCell::new(
-                        Node::new_with_prev(
-                            element, &self.last
-                        )
-                    )
-                );
-                
-                self.last
-                    .as_deref()
-                    .unwrap()
-                    .borrow_mut()
-                    .set_next(new_node.clone());
+                let new_node = Rc::new(RefCell::new(Node::new_with_prev(element, &self.last)));
 
-                self.last = Option::Some(new_node);
+                if let Some(val) = &self.last.clone() {
+                    val.as_ref().borrow_mut().set_next(new_node.clone());
+                    // val.as_ref().get_mut().set_next(new_node.clone());
+                }
+
+                self.last = Some(new_node);
                 self.len += 1;
             }
         }
     }
 
-    fn get_at(&self, index: usize) -> T {
-        
+    fn get_at(&self, index: usize) -> NodeMutRef<T> {
         if index > self.len || index < 0 {
             panic!("Index out of range");
         }
@@ -101,11 +130,16 @@ where
         let mut counter = 0;
 
         while counter != self.len && counter != index {
-            element = element.unwrap().as_ref().borrow().next.clone();
+            if let Some(element_val) = element {
+                element = element_val.as_ref().borrow().next.clone();
+            }
             counter += 1;
         }
 
-        return element.as_ref().unwrap().borrow().data.clone();
+        match element.clone() {
+            Some(element_val) => return NodeMutRef::new(element_val.as_ref().borrow_mut().deref_mut()),
+            None => panic!("Data is invalid!"),
+        };
     }
 }
 
@@ -119,6 +153,6 @@ fn main() {
     list.append(7657);
     println!("Elements of list are: ");
     for i in 0..list.len() {
-        println!("Element [{i}]: {:?}", list.get_at(i));
+        println!("Element [{i}]: {:?}", *list.get_at(i));
     }
 }
