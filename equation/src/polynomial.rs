@@ -1,6 +1,7 @@
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::{BTreeMap, HashMap};
+use std::fmt::{Display, Formatter, write};
 use std::ops::{Add, Div, Mul, Sub};
 
 lazy_static! {
@@ -10,6 +11,7 @@ lazy_static! {
     .unwrap();
 }
 
+#[derive(Debug)]
 pub struct Polynomial {
     terms: BTreeMap<i32, f64>,
 }
@@ -102,22 +104,6 @@ impl Polynomial {
         }
         return Ok(res);
     }
-
-    pub fn print(&self) {
-        let mut iter = self.terms.iter();
-        while let Some(term) = iter.next_back() {
-            if (*term.0 == 1) {
-                print!("{:+}x ", term.1);
-                continue;
-            }
-            if (*term.0 == 0) {
-                print!("{:+} ", term.1);
-                continue;
-            }
-            print!("{:+}x^{} ", term.1, term.0);
-        }
-        println!()
-    }
 }
 
 impl Add for Polynomial {
@@ -164,6 +150,25 @@ impl Div for Polynomial {
     type Output = (Polynomial, Option<(Polynomial, Polynomial)>);
 
     fn div(self, rhs: Self) -> Self::Output {
+
         todo!()
+    }
+}
+
+impl Display for Polynomial {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut iter = self.terms.iter();
+        while let Some(term) = iter.next_back() {
+            if *term.0 == 1 {
+                write!(f, "{:+}x ", term.1)?;
+                continue;
+            }
+            if *term.0 == 0 {
+                write!(f, "{:+} ", term.1)?;
+                continue;
+            }
+            write!(f, "{:+}x^{} ", term.1, term.0)?;
+        }
+        write!(f, "")
     }
 }
