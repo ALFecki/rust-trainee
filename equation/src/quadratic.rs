@@ -1,4 +1,3 @@
-use std::fs::read_to_string;
 use std::ops::{Add, Div, Mul, Sub};
 
 use lazy_static::lazy_static;
@@ -8,7 +7,7 @@ use crate::biquadratic::Biquadratic;
 
 lazy_static! {
     static ref REGEX: Regex = Regex::new(
-        r"(?P<first>[+|-]*\s*\d*\w\^2)|(?P<second>[+|-]*\s*\d*[[:alpha:]])|(?P<third>[+|-]*\s*\d+)"
+        r"(?P<first>[+|-]*\s*\d*\w\^\d)|(?P<second>[+|-]*\s*\d*[[:alpha:]])|(?P<third>[+|-]*\s*\d+)"
     )
     .unwrap();
 }
@@ -18,8 +17,6 @@ pub struct Quadratic {
     a: f64,
     b: f64,
     c: f64,
-    x1: Option<f64>,
-    x2: Option<f64>,
 }
 
 impl Quadratic {
@@ -37,7 +34,6 @@ impl Quadratic {
             ..Default::default()
         };
 
-        res.find_solves();
         return res;
     }
 
@@ -90,31 +86,24 @@ impl Quadratic {
     }
 
     fn new_from_coeffs(a: f64, b: f64, c: f64) -> Self {
-        let mut res = Quadratic {
-            a,
-            b,
-            c,
-            ..Default::default()
-        };
-        res.find_solves();
+        let mut res = Quadratic { a, b, c };
         return res;
     }
 
-    fn find_solves(&mut self) {
+    fn find_solves(&self) -> (Option<f64>, Option<f64>) {
         if self.a < 0.0 {
-            self.x1 = Some(-self.c);
-            self.x2 = None;
+            return (Some(-self.c), None);
         }
         let desc = self.b.powi(2) - 4.0 * self.a * self.c;
         if desc > 0.0 {
-            self.x1 = Some((-self.b + desc.sqrt()) / (2.0 * self.a).clone());
-            self.x2 = Some((-self.b - desc.sqrt()) / (2.0 * self.a).clone());
+            return (
+                Some((-self.b + desc.sqrt()) / (2.0 * self.a).clone()),
+                Some((-self.b - desc.sqrt()) / (2.0 * self.a).clone()),
+            );
         } else if desc == 0.0 {
-            self.x1 = Some((-self.b / (2.0 * self.a)).clone());
-            self.x2 = None;
+            return (Some((-self.b / (2.0 * self.a)).clone()), None);
         } else {
-            self.x1 = None;
-            self.x2 = None;
+            return (None, None);
         }
     }
 
@@ -200,22 +189,24 @@ impl Div for Quadratic {
             first_equation: self,
             second_equation: rhs,
         };
-        if self.x1.is_none() && self.x2.is_none() || rhs.x1.is_none() && rhs.x2.is_none() {
+        let (x1, x2) = self.find_solves();
+        let (rhs_x1, rhs_x2) = rhs.find_solves();
+        if x1.is_none() && x2.is_none() || rhs_x1.is_none() && rhs_x2.is_none() {
             return res;
         }
-        if self.x1 == rhs.x1 {
-            res.first_equation.x1 = None;
-            res.second_equation.x1 = None;
-        } else if self.x1 == rhs.x2 {
-            res.first_equation.x1 = None;
-            res.second_equation.x2 = None;
-        } else if self.x2 == rhs.x1 {
-            res.first_equation.x2 = None;
-            res.second_equation.x1 = None;
-        } else if self.x2 == rhs.x2 {
-            res.first_equation.x2 = None;
-            res.second_equation.x2 = None;
-        }
+        // if x1 == rhs_x1 {
+        //     res.first_equation.x1 = None;
+        //     res.second_equation.x1 = None;
+        // } else if x1 == rhs_x2 {
+        //     res.first_equation.x1 = None;
+        //     res.second_equation.x2 = None;
+        // } else if x2 == rhs_x1 {
+        //     res.first_equation.x2 = None;
+        //     res.second_equation.x1 = None;
+        // } else if x2 == rhs_x2 {
+        //     res.first_equation.x2 = None;
+        //     res.second_equation.x2 = None;
+        // }
         return res;
     }
 }
@@ -240,8 +231,6 @@ impl Default for Quadratic {
             a: 0.0,
             b: 0.0,
             c: 0.0,
-            x1: None,
-            x2: None,
         }
     }
 }
@@ -254,33 +243,33 @@ pub struct QuadraticDivision {
 
 impl QuadraticDivision {
     pub fn print(&self) {
-        if self.first_equation.x1.is_none() && self.first_equation.x2.is_none()
-            || self.second_equation.x1.is_none() && self.second_equation.x2.is_none()
-        {
-            println!(
-                "{:+}x^2 {:+}x {:+} / {:+}x^2 {:+}x {:+}",
-                self.first_equation.a,
-                self.first_equation.b,
-                self.first_equation.c,
-                self.second_equation.a,
-                self.second_equation.b,
-                self.second_equation.c
-            );
-        } else {
-            print!("{}", self.first_equation.a);
-            if let Some(value) = self.first_equation.x1 {
-                print!("( x {:+} )", -value);
-            }
-            if let Some(value) = self.first_equation.x2 {
-                print!("( x {:+} )", -value);
-            }
-            print!(" / {}", self.second_equation.a);
-            if let Some(value) = self.second_equation.x1 {
-                print!("( x {:+} )", -value);
-            }
-            if let Some(value) = self.second_equation.x2 {
-                print!("( x {:+} )", -value);
-            }
-        }
+        // if self.first_equation.x1.is_none() && self.first_equation.x2.is_none()
+        //     || self.second_equation.x1.is_none() && self.second_equation.x2.is_none()
+        // {
+        //     println!(
+        //         "{:+}x^2 {:+}x {:+} / {:+}x^2 {:+}x {:+}",
+        //         self.first_equation.a,
+        //         self.first_equation.b,
+        //         self.first_equation.c,
+        //         self.second_equation.a,
+        //         self.second_equation.b,
+        //         self.second_equation.c
+        //     );
+        // } else {
+        //     print!("{}", self.first_equation.a);
+        //     if let Some(value) = self.first_equation.x1 {
+        //         print!("( x {:+} )", -value);
+        //     }
+        //     if let Some(value) = self.first_equation.x2 {
+        //         print!("( x {:+} )", -value);
+        //     }
+        //     print!(" / {}", self.second_equation.a);
+        //     if let Some(value) = self.second_equation.x1 {
+        //         print!("( x {:+} )", -value);
+        //     }
+        //     if let Some(value) = self.second_equation.x2 {
+        //         print!("( x {:+} )", -value);
+        //     }
+        // }
     }
 }

@@ -1,8 +1,10 @@
 
 use quadratic::Quadratic;
+use crate::polynomial::Polynomial;
 
 mod quadratic;
 mod biquadratic;
+mod polynomial;
 
 
 fn main() {
@@ -23,6 +25,13 @@ fn main() {
     d.print();
 
     let e = a / b;
-    e.print()
+    e.print();
+
+    let g = Polynomial::new("x^2 - 2x - 24");
+    g.print();
+    let b = Polynomial::new("y^2 + 6 - 7y");
+    b.print();
+    let c = g * b;
+    c.print()
 
 }
