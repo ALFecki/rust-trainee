@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::collections::{BTreeMap, HashMap};
-use std::fmt::{Display, Formatter, write};
+use std::collections::BTreeMap;
+use std::fmt::{Display, Formatter};
 use std::ops::{Add, Div, Mul, Sub};
 
 lazy_static! {
@@ -42,7 +42,7 @@ impl Polynomial {
                         Ok(res) => res,
                         Err(str) => return Err(&str),
                     })
-                    .and_modify(|mut num| *num += number)
+                    .and_modify(| num| *num += number)
                     .or_insert(number);
             } else if let Some(cap) = caps.name("second") {
                 let number = match Self::get_term_number(cap.as_str(), false) {
@@ -51,7 +51,7 @@ impl Polynomial {
                 };
                 coeffs
                     .entry(1)
-                    .and_modify(|mut num| *num += number)
+                    .and_modify(| num| *num += number)
                     .or_insert(number);
             } else if let Some(cap) = caps.name("third") {
                 let number = match Self::get_term_number(cap.as_str(), true) {
@@ -60,7 +60,7 @@ impl Polynomial {
                 };
                 coeffs
                     .entry(0)
-                    .and_modify(|mut num| *num += number)
+                    .and_modify(| num| *num += number)
                     .or_insert(number);
             }
         }
@@ -112,7 +112,7 @@ impl Add for Polynomial {
     fn add(self, rhs: Self) -> Self::Output {
         let mut new_map = self.terms.clone();
         for term in rhs.terms {
-            new_map.entry(term.0).and_modify(|mut num| *num += term.1);
+            new_map.entry(term.0).and_modify(| num| *num += term.1);
         }
         Polynomial { terms: new_map }
     }
@@ -123,7 +123,7 @@ impl Sub for Polynomial {
     fn sub(self, rhs: Self) -> Self::Output {
         let mut new_map = self.terms.clone();
         for term in rhs.terms {
-            new_map.entry(term.0).and_modify(|mut num| *num -= term.1);
+            new_map.entry(term.0).and_modify(| num| *num -= term.1);
         }
         Polynomial { terms: new_map }
     }
