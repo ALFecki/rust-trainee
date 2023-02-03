@@ -15,9 +15,9 @@ fn main() {
 
 
     let a = Polynomial::new(vec![1.0, 4.0]);
-    println!("{:?}", a);
+    println!("{}", a);
     if let Ok(d) = g / a {
-        println!("{:?}", d);
+        println!("{d}");
     };
 
 }

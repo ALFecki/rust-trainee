@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Div, Mul, Sub};
 use std::str::FromStr;
@@ -157,8 +157,6 @@ impl Div for Polynomial {
     type Output = Result<PolynomialDivision, String>;
 
     fn div(self, rhs: Self) -> Self::Output {
-        println!("self = {:?}", self);
-        println!("rhs = {:?}", rhs);
         let dividend_pow = if let Some(val) = self.terms.iter().next_back() {
             *val.0
         } else {
@@ -178,15 +176,17 @@ impl Div for Polynomial {
             },
             self.clone(),
         );
-        let (mut self_iter, mut rhs_iter) = (self.terms.iter(), rhs.terms.iter());
+        let rhs_iter = rhs.terms.iter();
         loop {
-            if let Some(self_term) = self_iter.next_back() {
+            let remainder_cpy = remainder.clone();
+            let remainder_iter = remainder_cpy.terms.iter();
+            if let Some(remainder_term) = remainder_iter.clone().max_by_key(|x| x.0) {
                 while let Some(rhs_term) = rhs_iter.clone().max_by_key(|x| x.0) {
-                    println!("self_term = {:?} rhs_term = {:?}", self_term, rhs_term);
                     if *rhs_term.1 != 0.0 {
-                        quotient
-                            .terms
-                            .insert(*self_term.0 - rhs_term.0, self_term.1 / rhs_term.1);
+                        quotient.terms.insert(
+                            *remainder_term.0 - rhs_term.0,
+                            remainder_term.1 / rhs_term.1,
+                        );
                         break;
                     }
                 }
@@ -194,43 +194,32 @@ impl Div for Polynomial {
             let temp = if let Some(new_quotient_term) = quotient.terms.iter().next() {
                 let mut temp_map = BTreeMap::<i32, f64>::new();
                 temp_map.insert(*new_quotient_term.0, *new_quotient_term.1);
-                let temp_poly = Polynomial::new_from(
-                    temp_map
-                );
+                let temp_poly = Polynomial::new_from(temp_map);
                 temp_poly * rhs.clone()
             } else {
-                return Err("Something".to_string());
+                return Err("Division error".to_string());
             };
-            println!("quotient = {:?}", quotient);
-            println!("remainder = {:?}", remainder);
-            println!("temp = {:?}", temp);
-            println!();
             remainder = remainder - temp;
             for term in remainder.terms.clone() {
                 if term.1 == 0.0 {
                     remainder.terms.remove(&term.0);
                 }
             }
-            println!("remainder after temp = {:?}", remainder);
             if let Some(val) = remainder.terms.iter().next_back() {
                 if *val.0 < divider_pow {
                     break;
                 }
             }
         }
-        if remainder.terms.is_empty() {
-            return Ok(PolynomialDivision {
-                quotient,
-                remainder: None,
-                divider: rhs
-            });
-        }
         Ok(PolynomialDivision {
             quotient,
-            remainder: Some(remainder),
-            divider: rhs
+            remainder: if remainder.terms.is_empty() {
+                None
+            } else {
+                Some(remainder)
+            },
+            divider: rhs,
         })
-
     }
 }
 
@@ -284,6 +273,16 @@ impl Display for Polynomial {
                 write!(f, "{:+}x^{} ", term.1, term.0)?;
             }
             is_first = false;
+        }
+        write!(f, "")
+    }
+}
+
+impl Display for PolynomialDivision {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.quotient)?;
+        if let Some(remainder) = &self.remainder {
+            write!(f, "+ ( {} / ( {} ))", remainder, self.divider)?;
         }
         write!(f, "")
     }
