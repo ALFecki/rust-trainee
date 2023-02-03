@@ -181,7 +181,8 @@ impl Div for Polynomial {
         let (mut self_iter, mut rhs_iter) = (self.terms.iter(), rhs.terms.iter());
         loop {
             if let Some(self_term) = self_iter.next_back() {
-                while let Some(rhs_term) = rhs_iter.next_back() {
+                while let Some(rhs_term) = rhs_iter.clone().max_by_key(|x| x.0) {
+                    println!("self_term = {:?} rhs_term = {:?}", self_term, rhs_term);
                     if *rhs_term.1 != 0.0 {
                         quotient
                             .terms
@@ -205,6 +206,12 @@ impl Div for Polynomial {
             println!("temp = {:?}", temp);
             println!();
             remainder = remainder - temp;
+            for term in remainder.terms.clone() {
+                if term.1 == 0.0 {
+                    remainder.terms.remove(&term.0);
+                }
+            }
+            println!("remainder after temp = {:?}", remainder);
             if let Some(val) = remainder.terms.iter().next_back() {
                 if *val.0 < divider_pow {
                     break;
