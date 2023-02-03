@@ -1,8 +1,9 @@
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Div, Mul, Sub};
+use std::str::FromStr;
 
 lazy_static! {
     static ref REGEX: Regex = Regex::new(
@@ -11,21 +12,22 @@ lazy_static! {
     .unwrap();
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Polynomial {
     terms: BTreeMap<i32, f64>,
 }
 
 impl Polynomial {
-    pub fn new(expr: &str) -> Result<Self, &str> {
-        Ok( Polynomial {
-            terms: match Self::parse_terms(expr) {
-                Ok(res) => res,
-                Err(str) => {
-                    return Err(str);
-                }
-            },
-        })
+    pub fn new(coeffs: Vec<f64>) -> Self {
+        let mut map = BTreeMap::<i32, f64>::new();
+        for i in 0..coeffs.len() {
+            map.insert((coeffs.len() - i - 1) as i32, coeffs[i]);
+        }
+        Polynomial { terms: map }
+    }
+
+    pub fn new_from(terms: BTreeMap<i32, f64>) -> Self {
+        Self { terms }
     }
 
     fn parse_terms(expr: &str) -> Result<BTreeMap<i32, f64>, &str> {
@@ -144,16 +146,107 @@ impl Mul for Polynomial {
         Polynomial { terms: new_map }
     }
 }
+#[derive(Debug)]
+pub struct PolynomialDivision {
+    quotient: Polynomial,
+    remainder: Option<Polynomial>,
+    divider: Polynomial,
+}
 
 impl Div for Polynomial {
-    type Output = (Polynomial, Option<(Polynomial, Polynomial)>);
+    type Output = Result<PolynomialDivision, String>;
 
     fn div(self, rhs: Self) -> Self::Output {
-        todo!()
+        println!("self = {:?}", self);
+        println!("rhs = {:?}", rhs);
+        let dividend_pow = if let Some(val) = self.terms.iter().next_back() {
+            *val.0
+        } else {
+            return Err("Divider is empty".to_string());
+        };
+        let divider_pow = if let Some(val) = rhs.terms.iter().next_back() {
+            *val.0
+        } else {
+            return Err("Divider is empty".to_string());
+        };
+        if dividend_pow < divider_pow {
+            return Err("Power of dividend is less than divider".to_string());
+        }
+        let (mut quotient, mut remainder) = (
+            Polynomial {
+                terms: BTreeMap::new(),
+            },
+            self.clone(),
+        );
+        let (mut self_iter, mut rhs_iter) = (self.terms.iter(), rhs.terms.iter());
+        loop {
+            if let Some(self_term) = self_iter.next_back() {
+                while let Some(rhs_term) = rhs_iter.next_back() {
+                    if *rhs_term.1 != 0.0 {
+                        quotient
+                            .terms
+                            .insert(*self_term.0 - rhs_term.0, self_term.1 / rhs_term.1);
+                        break;
+                    }
+                }
+            }
+            let temp = if let Some(new_quotient_term) = quotient.terms.iter().next() {
+                let mut temp_map = BTreeMap::<i32, f64>::new();
+                temp_map.insert(*new_quotient_term.0, *new_quotient_term.1);
+                let temp_poly = Polynomial::new_from(
+                    temp_map
+                );
+                temp_poly * rhs.clone()
+            } else {
+                return Err("Something".to_string());
+            };
+            println!("quotient = {:?}", quotient);
+            println!("remainder = {:?}", remainder);
+            println!("temp = {:?}", temp);
+            println!();
+            remainder = remainder - temp;
+            if let Some(val) = remainder.terms.iter().next_back() {
+                if *val.0 < divider_pow {
+                    break;
+                }
+            }
+        }
+        if remainder.terms.is_empty() {
+            return Ok(PolynomialDivision {
+                quotient,
+                remainder: None,
+                divider: rhs
+            });
+        }
+        Ok(PolynomialDivision {
+            quotient,
+            remainder: Some(remainder),
+            divider: rhs
+        })
+
     }
 }
 
-impl Display for Polynomial { // one huge crutch
+#[derive(Debug, PartialEq, Eq)]
+pub struct ParsePolynomialError(String);
+
+impl FromStr for Polynomial {
+    type Err = ParsePolynomialError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Polynomial {
+            terms: match Self::parse_terms(s) {
+                Ok(res) => res,
+                Err(str) => {
+                    return Err(ParsePolynomialError(str.to_string()));
+                }
+            },
+        })
+    }
+}
+
+impl Display for Polynomial {
+    // one huge crutch
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut iter = self.terms.iter();
         let mut is_first = true;
