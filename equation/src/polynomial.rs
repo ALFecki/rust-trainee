@@ -167,14 +167,14 @@ impl Div for Polynomial {
         } else {
             return Err("Divider is empty".to_string());
         };
-        if dividend_pow < divider_pow {
-            return Err("Power of dividend is less than divider".to_string());
-        }
+        // if dividend_pow < divider_pow {
+        //     return Err("Power of dividend is less than divider".to_string());
+        // }
         let (mut quotient, mut remainder) = (
             Polynomial {
                 terms: BTreeMap::new(),
             },
-            self.clone(),
+            self,
         );
         let rhs_iter = rhs.terms.iter();
         loop {

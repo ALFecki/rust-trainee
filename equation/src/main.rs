@@ -14,9 +14,10 @@ fn main() {
     println!("{c}");
 
 
-    let a = Polynomial::new(vec![1.0, 4.0]);
+    let q = Polynomial::new(vec![1.0, 0.0, -1.0]);
+    let a = Polynomial::new(vec![1.0, -1.0]);
     println!("{}", a);
-    if let Ok(d) = g / a {
+    if let Ok(d) = a / q {
         println!("{d}");
     };
 
