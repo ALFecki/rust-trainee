@@ -1,4 +1,5 @@
 use std::time::Duration;
+use tokio::select;
 use tokio::sync::mpsc::channel;
 
 async fn get_image_id(name: &str) -> i32 {
@@ -20,19 +21,16 @@ async fn task1(names: Vec<&'static str>) {
 }
 
 async fn task2(names: Vec<&'static str>) {
-    let (tx, mut rx) = channel(5);
-
-    let mut handles = vec![];
-
-    for name in names {
-        let tx_cpy = tx.clone();
-        let handle = tokio::spawn(async move {
-            tx_cpy.send(get_image_id(name).await).await;
-        });
-        handles.push(handle);
-    }
-    if let Some(res) = rx.recv().await {
-        println!("{}", res);
+    select! {
+        val  = get_image_id(names[0]) => {
+            println!("{val}");
+        }
+        val  = get_image_id(names[1]) => {
+            println!("{val}");
+        }
+        val  = get_image_id(names[2]) => {
+            println!("{val}");
+        }
     }
 }
 
