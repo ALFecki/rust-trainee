@@ -1,6 +1,7 @@
 use std::time::Duration;
 use tokio::select;
 use tokio::sync::mpsc::channel;
+use tokio::task::JoinSet;
 
 async fn get_image_id(name: &str) -> i32 {
     tokio::time::sleep(Duration::from_millis((name.len() as u64) * 100)).await;
@@ -21,16 +22,12 @@ async fn task1(names: Vec<&'static str>) {
 }
 
 async fn task2(names: Vec<&'static str>) {
-    select! {
-        val  = get_image_id(names[0]) => {
-            println!("{val}");
-        }
-        val  = get_image_id(names[1]) => {
-            println!("{val}");
-        }
-        val  = get_image_id(names[2]) => {
-            println!("{val}");
-        }
+    let mut set = JoinSet::new();
+    for name in names {
+        set.spawn(async { get_image_id(name).await});
+    }
+    if let Some(Ok(res)) = set.join_next().await {
+        println!("{res}");
     }
 }
 
