@@ -19,20 +19,10 @@ impl Future for Delay {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let check = self.duration;
-        let instant = Instant::now();
-        instant.checked_add(check);
-        if instant.elapsed().as_secs() != check.as_secs() {
-            return Pending;
-        }
-        Ready(())
-
+        println!("polled");
+        return Poll::Pending
     }
 }
-
-
-
-
 
 
 async fn get_image_id(name: &str) -> usize {
@@ -42,17 +32,19 @@ async fn get_image_id(name: &str) -> usize {
 
 async fn get_static_image() -> usize { 1 }
 
-// async fn task1(names: Vec<&'static str>) {
-//     let mut handlers: Vec<_>  = vec![];
-//     handlers = names.iter().map(|name| get_image_id(name)).collect();
-//     handlers.push(get_static_image());
-//
-//
-//     for handler in handlers {
-//         let res = handler.await;
-//         println!("{res}")
-//     }
-// }
+async fn task1(names: Vec<&'static str>) {
+    let mut handlers: Vec<Pin<Box<dyn Future<Output = usize>>>>  = vec![];
+    for name  in names {
+        handlers.push(Box::pin(get_image_id(name)));
+    }
+    handlers.push( Box::pin(get_static_image()));
+
+
+    for handler in handlers {
+        let res = handler.await;
+        println!("{res}")
+    }
+}
 
 async fn task2(names: Vec<&'static str>) {
 
@@ -86,8 +78,8 @@ async fn task2(names: Vec<&'static str>) {
 
 #[tokio::main]
 async fn main() {
-    // let names = vec!["first_name", "sname", "first_name_and_last_name"];
-    // task1(names.clone()).await;
+    let names = vec!["first_name", "sname", "first_name_and_last_name"];
+    task1(names.clone()).await;
     // task2(names).await;
     println!("hello");
     let sleep = my_sleep(Duration::from_secs(2));
