@@ -4,41 +4,37 @@ use std::sync::{Arc, Mutex};
 use std::task::Poll::{Pending, Ready};
 use std::task::{Context, Poll};
 use std::thread;
+use time::Instant;
 use tokio::time::Duration;
 
 pub fn my_sleep(duration: Duration) -> Delay {
     Delay {
-        to_share: Arc::new(Mutex::new(Share {
-            completed: false,
-            duration,
-        })),
+        duration,
+        timer: None
     }
 }
 
 pub struct Delay {
-    to_share: Arc<Mutex<Share>>,
-}
-
-pub struct Share {
-    completed: bool,
     duration: Duration,
+    timer: Option<Instant>
 }
 
 impl Future for Delay {
     type Output = ();
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let share_cpy = self.to_share.clone();
-        return if !share_cpy.lock().unwrap().completed {
-            thread::spawn(move || {
-                let mut share = share_cpy.lock().unwrap();
-                thread::sleep(share.duration);
-                share.completed = true;
-            });
-            cx.waker().clone().wake();
-            Pending
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.timer.is_none() {
+            self.timer = Some(Instant::now());
+        }
+        if let Some(timer) = self.timer {
+            return if timer.elapsed() < self.duration {
+                cx.waker().clone().wake();
+                Pending
+            } else {
+                Ready(())
+            }
         } else {
-            Ready(())
+            panic!("Timer error");
         }
     }
 }
@@ -47,7 +43,7 @@ impl Future for Delay {
 async fn main() {
     println!("hello");
     // tokio::time::sleep()
-    let sleep = my_sleep(Duration::from_secs(5));
+    let sleep = my_sleep(Duration::from_secs(2));
     println!("Something");
     sleep.await;
     println!("yes");
