@@ -1,11 +1,8 @@
 extern crate core;
 use std::future::Future;
-use std::net::Shutdown::Read;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
 use std::task::Poll::{Pending, Ready};
 use std::task::{Context, Poll};
-use std::thread;
 use time::Instant;
 use tokio::time::Duration;
 
