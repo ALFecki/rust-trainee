@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::net::Shutdown::Read;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::Poll::{Pending, Ready};
@@ -26,15 +27,15 @@ impl Future for Delay {
         if self.timer.is_none() {
             self.timer = Some(Instant::now());
         }
-        if let Some(timer) = self.timer {
-            return if timer.elapsed() < self.duration {
+        return if let Some(timer) = self.timer {
+            if timer.elapsed() < self.duration {
                 cx.waker().clone().wake();
                 Pending
             } else {
                 Ready(())
             }
         } else {
-            panic!("Timer error");
+            Ready(())
         }
     }
 }
