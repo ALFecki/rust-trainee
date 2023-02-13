@@ -1,3 +1,4 @@
+extern crate core;
 use std::future::Future;
 use std::net::Shutdown::Read;
 use std::pin::Pin;
@@ -11,29 +12,27 @@ use tokio::time::Duration;
 pub fn my_sleep(duration: Duration) -> Delay {
     Delay {
         duration,
-        timer: None
+        timer: None,
     }
 }
 
 pub struct Delay {
     duration: Duration,
-    timer: Option<Instant>
+    timer: Option<Instant>,
 }
 
 impl Future for Delay {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.timer.is_none() {
-            self.timer = Some(Instant::now());
-        }
-        return if let Some(timer) = self.timer {
-            if timer.elapsed() < self.duration {
-                cx.waker().clone().wake();
-                Pending
-            } else {
-                Ready(())
-            }
+        let timer = match self.timer {
+            None => Instant::now(),
+            Some(t) => t,
+        };
+        if timer.elapsed() < self.duration {
+            cx.waker().wake_by_ref();
+            self.timer = Some(timer);
+            Pending
         } else {
             Ready(())
         }
