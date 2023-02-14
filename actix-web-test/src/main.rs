@@ -11,7 +11,7 @@ struct Counters {
     custom_counters: Arc<Mutex<HashMap<String, AtomicU32>>>,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Deserialize)]
 struct CustomCounterQuery {
     name: Option<String>,
 }
