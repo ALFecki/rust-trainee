@@ -3,7 +3,8 @@ use actix_web::{main, web, App, HttpResponse, HttpServer, Responder};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 struct Counters {
     counter: AtomicU32,
@@ -11,9 +12,10 @@ struct Counters {
     custom_counters: Arc<Mutex<HashMap<String, AtomicU32>>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct CustomCounterQuery {
-    name: Option<String>,
+    na: Option<String>,
+    me: Option<String>,
 }
 
 fn change_counters(incr: &AtomicU32, to_swap: &AtomicU32) -> u32 {
@@ -25,18 +27,21 @@ async fn counter_get(counters: Data<Counters>, info: Query<CustomCounterQuery>) 
     let temp = change_counters(&counters.counter, &counters.delete_counter);
     let mut response = format!("Now counter is {}, delete counter reset", temp);
 
-    if let Some(name) = &info.name {
-        let mutex = counters.custom_counters.clone();
-        let mut map = mutex.lock().unwrap();
+    if let Some(na) = &info.na {
+        if let Some(me) = &info.me {
+            let mutex = counters.custom_counters.clone();
+            let mut map = mutex.lock().await;
+            let mut name = String::from(na);
+            name.push_str(me);
+            map.entry(name.clone())
+                .and_modify(|c| {
+                    c.fetch_add(1, Ordering::SeqCst);
+                })
+                .or_insert(AtomicU32::new(1));
 
-        map.entry(name.clone())
-            .and_modify(|c| {
-                c.fetch_add(1, Ordering::SeqCst);
-            })
-            .or_insert(AtomicU32::new(1));
-
-        if let Some(val) = map.get_key_value(name) {
-            response += format!(", custom counter ({}) is {:?}", name, val.1).as_str()
+            if let Some(val) = map.get_key_value(&name) {
+                response += format!(", custom counter ({}) is {:?}", name, val.1).as_str()
+            }
         }
     }
     println!("{}", response);
