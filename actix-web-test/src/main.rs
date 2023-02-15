@@ -33,25 +33,27 @@ fn change_counters(incr: &AtomicU32, to_swap: &AtomicU32) -> u32 {
     incr.fetch_add(1, Ordering::SeqCst) + 1
 }
 
-async fn counter_get(counters: Data<Counters>, info: Query<CustomCounterQuery>) -> impl Responder {
+async fn counter_get(
+    counters: Data<Counters>,
+    params: Query<HashMap<String, String>>,
+) -> impl Responder {
     let temp = change_counters(&counters.counter, &counters.delete_counter);
     let mut response = format!("Now counter is {}, delete counter reset", temp);
-
-    if let Some(na) = &info.na {
-        if let Some(me) = &info.me {
-            let mutex = counters.custom_counters.clone();
-            let mut map = mutex.lock().await;
-            let mut name = String::from(na);
-            name.push_str(me);
-            map.entry(name.clone())
-                .and_modify(|c| {
-                    c.fetch_add(1, Ordering::SeqCst);
-                })
-                .or_insert(AtomicU32::new(1));
-
-            if let Some(val) = map.get_key_value(&name) {
-                response += format!(", custom counter ({}) is {:?}", name, val.1).as_str()
-            }
+    if params.len() < 4 {
+        let mut name = String::new();
+        response += ", custom counter ";
+        let mutex = counters.custom_counters.clone();
+        let mut map = mutex.lock().await;
+        for param in params.0 {
+            name.push_str(param.1.as_str());
+        }
+        map.entry(name.clone())
+            .and_modify(|c| {
+                c.fetch_add(1, Ordering::SeqCst);
+            })
+            .or_insert(AtomicU32::new(1));
+        if let Some(val) = map.get_key_value(&name) {
+            response += format!(" ({}) is {:?}", name, val.1).as_str()
         }
     }
     println!("{}", response);
