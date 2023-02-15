@@ -12,6 +12,16 @@ struct Counters {
     custom_counters: Arc<Mutex<HashMap<String, AtomicU32>>>,
 }
 
+impl Default for Counters {
+    fn default() -> Self {
+        Counters {
+            counter: AtomicU32::new(0),
+            delete_counter: AtomicU32::new(0),
+            custom_counters: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct CustomCounterQuery {
     na: Option<String>,
@@ -58,11 +68,7 @@ async fn counter_delete(counters: Data<Counters>) -> impl Responder {
 
 #[main]
 async fn main() -> std::io::Result<()> {
-    let counters: Data<Counters> = Data::new(Counters {
-        counter: AtomicU32::new(0),
-        delete_counter: AtomicU32::new(0),
-        custom_counters: Arc::new(Mutex::new(HashMap::new())),
-    });
+    let counters: Data<Counters> = Data::new(Counters::default());
 
     HttpServer::new(move || {
         App::new()
