@@ -1,4 +1,6 @@
-use actix_web::http::header::ContentType;
+mod xml;
+
+use crate::xml::Xml;
 use actix_web::web::{Data, Json, Query};
 use actix_web::{main, web, App, Either, HttpRequest, HttpResponse, HttpServer, Responder};
 use serde::ser::Serialize;
@@ -102,16 +104,10 @@ async fn counter_get(
 
     if let Some(accept) = get_accept_header(&headers) {
         if accept == "application/xml" {
-            if let Ok(ser) = serde_xml_rs::to_string(&counters) {
-                return Either::Left(ser.customize().insert_header(ContentType::xml()));
-            }
+            return Either::Left(Xml(counters));
         }
     };
-    Either::Right(
-        Json(counters)
-            .customize()
-            .insert_header(ContentType::json()),
-    )
+    Either::Right(Json(counters))
 }
 
 async fn counter_delete(counters: Data<Counters>) -> impl Responder {
