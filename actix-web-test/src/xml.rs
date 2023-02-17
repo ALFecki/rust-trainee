@@ -34,7 +34,7 @@ where
                     .insert_header(ContentType::xml())
                     .message_body(val)
                 {
-                    Ok(respond) => respond.map_into_left_body(),
+                    Ok(response) => response.map_into_left_body(),
                     Err(e) => HttpResponse::from_error(e).map_into_right_body(),
                 }
             }
