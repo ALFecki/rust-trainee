@@ -4,13 +4,12 @@ mod xml;
 use crate::xml::Xml;
 use actix_web::web::{Data, Json, Query};
 use actix_web::{main, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
-
 use crate::utilities::{change_counters, get_accept_header};
+use actix_web::body::EitherBody;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-use actix_web::body::EitherBody;
 use tokio::sync::Mutex;
 
 #[derive(Default, Serialize)]
@@ -29,26 +28,30 @@ struct CustomCounterQuery {
     e: String,
 }
 
-struct ContentTypeResponse<T> where T: Clone {
+struct ContentTypeResponse<T>
+where
+    T: Clone,
+{
     data: T,
-    // request: HttpRequest
 }
 
-impl<T> Responder for ContentTypeResponse<T> where T: Clone
+impl<T> Responder for ContentTypeResponse<T>
+where
+    T: Clone + Serialize,
 {
     type Body = EitherBody<String>;
 
     fn respond_to(self, req: &HttpRequest) -> HttpResponse<Self::Body> {
-        let mut data_in_request = Json(self.data.clone()).respond_to(req);
+        let mut data_in_response = Json(self.data.clone()).respond_to(req);
         if let Some(accept) = get_accept_header(&req) {
             if let Ok(content_type) = accept.parse::<mime::Mime>() {
-                match content_type.type_() {
-                    mime::XML => data_in_request = Xml(self.data).respond_to(req),
-                    _ => data_in_request = Json(self.data).respond_to(req)
+                match content_type.subtype() {
+                    mime::XML => data_in_response = (Xml(self.data)).respond_to(req),
+                    _ => data_in_response = Json(self.data).respond_to(req),
                 }
             }
         }
-        data_in_request
+        data_in_response
     }
 }
 
@@ -57,22 +60,7 @@ struct CustomAdd {
     counter: u32,
 }
 
-// fn create_response<T>(headers: HttpRequest, data: T) -> impl Responder
-//     where
-//     T: Serialize,
-// {
-//     if let Some(accept) = get_accept_header(&headers) {
-//         if let Ok(content_type) = accept.parse::<mime::Mime>() {
-//             return match content_type.type_() {
-//                 mime::XML => Xml(data).customize(),
-//                 _ => Json(data).customize()
-//             }
-//         }
-//     }
-// }
-
 async fn counter_get(
-    headers: HttpRequest,
     counters: Data<Counters>,
     params: Option<Query<CustomCounterQuery>>,
     counter: Option<Query<CustomAdd>>,
@@ -100,11 +88,7 @@ async fn counter_get(
     }
     change_counters(&counters.counter, &counters.delete_counter, to_add);
 
-    // ContentTypeResponse::new(Xml(counters), &headers)
-
-    ContentTypeResponse {
-        data: counters,
-    }
+    ContentTypeResponse { data: counters }
 }
 
 async fn counter_delete(counters: Data<Counters>) -> impl Responder {

@@ -19,7 +19,7 @@ impl Display for XmlError {
 impl ResponseError for XmlError {}
 
 #[derive(Serialize)]
-pub struct Xml<T>(pub T);
+pub struct Xml<T>(pub T) where T: Serialize;
 
 impl<T> Responder for Xml<T>
 where
