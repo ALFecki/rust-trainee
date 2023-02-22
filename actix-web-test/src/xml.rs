@@ -1,5 +1,6 @@
 use actix_web::body::EitherBody;
 use actix_web::http::header::ContentType;
+use actix_web::http::StatusCode;
 use actix_web::{HttpRequest, HttpResponse, Responder, ResponseError};
 use serde::Serialize;
 use serde_xml_rs::Error;
@@ -16,10 +17,18 @@ impl Display for XmlError {
     }
 }
 
-impl ResponseError for XmlError {}
+impl ResponseError for XmlError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::SerializingError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
 
 #[derive(Serialize)]
-pub struct Xml<T>(pub T) where T: Serialize;
+pub struct Xml<T>(pub T)
+where
+    T: Serialize;
 
 impl<T> Responder for Xml<T>
 where
