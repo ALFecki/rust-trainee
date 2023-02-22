@@ -8,7 +8,7 @@ use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 enum XmlError {
-    SerializingError(Error),
+    Serializing(Error),
 }
 
 impl Display for XmlError {
@@ -20,7 +20,7 @@ impl Display for XmlError {
 impl ResponseError for XmlError {
     fn status_code(&self) -> StatusCode {
         match self {
-            Self::SerializingError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Serializing(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -47,7 +47,7 @@ where
                     Err(e) => HttpResponse::from_error(e).map_into_right_body(),
                 }
             }
-            Err(e) => HttpResponse::from_error(XmlError::SerializingError(e)).map_into_right_body(),
+            Err(e) => HttpResponse::from_error(XmlError::Serializing(e)).map_into_right_body(),
         };
     }
 }
