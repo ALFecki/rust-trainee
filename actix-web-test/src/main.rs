@@ -7,10 +7,14 @@ use actix_web::body::EitherBody;
 use actix_web::web::{Data, Json, Query};
 use actix_web::{delete, get, main, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use serde::{Deserialize, Serialize};
+use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::io::ErrorKind::NotFound;
 
-use actix_web::error::ContentTypeError::ParseError;
+use actix_web::error::ContentTypeError::{ParseError, UnknownEncoding};
 use actix_web::error::ReadlinesError::ContentTypeError;
+use actix_web::http::header::ACCEPT;
+use mime::{Mime, Name};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -38,6 +42,20 @@ where
     data: T,
 }
 
+impl<T> ContentTypeResponse<T>
+where
+    T: Serialize,
+{
+    fn get_content_type(&self, req: &HttpRequest) -> Result<Mime, &str> {
+        if let Some(accept) = get_accept_header(req) {
+            if let Ok(mime) = accept.parse::<Mime>() {
+                return Ok(mime);
+            }
+        }
+        Err("Mime is shit")
+    }
+}
+
 impl<T> Responder for ContentTypeResponse<T>
 where
     T: Serialize,
@@ -45,18 +63,21 @@ where
     type Body = EitherBody<String>;
 
     fn respond_to(self, req: &HttpRequest) -> HttpResponse<Self::Body> {
-        if let Some(accept) = get_accept_header(req) {
-            if let Ok(content_type) = accept.parse::<mime::Mime>() {
-                return match content_type.subtype() {
-                    mime::XML => Xml(self.data).respond_to(req),
-                    mime::JSON => Json(self.data).respond_to(req),
-                    _ => {
-                        HttpResponse::from_error(ContentTypeError(ParseError)).map_into_right_body()
-                    }
-                };
+        let mime = 'get_mime: {
+            if let Some(accept) = get_accept_header(req) {
+                if let Ok(mime) = accept.parse::<Mime>() {
+                    break 'get_mime mime;
+                }
             }
+            return HttpResponse::from_error(ContentTypeError(UnknownEncoding))
+                .map_into_right_body();
+        };
+        let mime = mime.subtype();
+        match mime {
+            mime::XML => Xml(self.data).respond_to(req),
+            mime::JSON => Json(self.data).respond_to(req),
+            _ => HttpResponse::from_error(ContentTypeError(ParseError)).map_into_right_body(),
         }
-        Json(self.data).respond_to(req)
     }
 }
 
