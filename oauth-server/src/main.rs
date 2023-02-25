@@ -1,10 +1,16 @@
-use actix_web::http::header::{CONTENT_TYPE, HeaderValue, LOCATION};
+use std::string::ToString;
+use actix_web::error::UrlencodedError::ContentType;
+use actix_web::http::header::{HeaderValue, CONTENT_TYPE, LOCATION};
 use actix_web::http::{header, StatusCode};
 use actix_web::web::{Query, Redirect};
 use actix_web::{get, HttpRequest};
 use actix_web::{App, HttpResponse, HttpServer, Responder};
-use actix_web::error::UrlencodedError::ContentType;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
+
+static CLIENT_ID: &str = "526205543724-jkq58jp5ch15a754pbkilr4n2sh1lbka.apps.googleusercontent.com";
+static CLIENT_SECRET: &str = "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";
+
 
 #[derive(Serialize, Deserialize)]
 pub struct GoogleResponse {
@@ -19,9 +25,9 @@ async fn authorize() -> impl Responder {
             LOCATION,
             HeaderValue::from_static(
                 "https://accounts.google.com/o/oauth2/v2/auth?\
-                scope=https%3A//www.googleapis.com/auth/drive.metadata.readonly&\
                 access_type=offline&\
                 include_granted_scopes=true&\
+                scope=openid%20email&\
                 response_type=code&\
                 redirect_uri=http://localhost:8080/test&\
                 client_id=526205543724-jkq58jp5ch15a754pbkilr4n2sh1lbka.apps.googleusercontent.com",
@@ -33,17 +39,34 @@ async fn authorize() -> impl Responder {
 #[get("/test")]
 async fn test(query: Option<Query<GoogleResponse>>) -> impl Responder {
     // println!("{}", query.unwrap().code);
-    let response_body = format!("code={}&\
-    client_secret=HMVctrTicW6RC1Q8T&\
-    redirect_uri=http://localhost:8080/test2&\
-    grant_type=authorization_code", query.unwrap().code);
-    HttpResponse::Found().append_header((LOCATION, "https://oauth2.googleapis.com/token"))
-        .append_header((CONTENT_TYPE, mime::APPLICATION_WWW_FORM_URLENCODED))
+    let response_body = format!(
+        "code={}&\
+        client_id={}&\
+        client_secret={}&\
+        redirect_uri=http://localhost:8080/test&\
+        grant_type=authorization_code",
+        query.unwrap().code.trim(),
+        CLIENT_ID,
+        CLIENT_SECRET
+    );
+    let client = Client::new();
+    let response = client
+        .post("https://oauth2.googleapis.com/token")
+        .header("Content-type", "application/x-www-form-urlencoded")
         .body(response_body)
+        .send()
+        .await
+        .unwrap();
 
+
+    let response_content = response.text().await.unwrap();
+    println!("{}", response_content);
+    HttpResponse::Ok().body(response_content)
+
+    // HttpResponse::Ok().finish()
 }
 
-#[get("/test2")]
+#[get("/test_response")]
 async fn test2(query: Query<String>) -> impl Responder {
     println!("{}", query);
     HttpResponse::Ok().finish()

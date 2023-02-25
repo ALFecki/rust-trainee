@@ -10,3 +10,4 @@ serde = {version ="1.0.152", features=["derive"]}
 actix-web = "4.3.0"
 diesel = "2.0.3"
 mime = "0.3.16"
+reqwest = "0.11.14"
