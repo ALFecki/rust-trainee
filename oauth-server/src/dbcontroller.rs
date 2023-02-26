@@ -17,10 +17,10 @@ pub fn database_connection() -> Result<PgConnection, String> {
     }
 }
 
-pub fn create_user(&mut connection: PgConnection, new_user: NewUser) -> User {
-    use crate::schema::dsl::*;
+pub fn create_user(connection: &mut PgConnection, new_user: NewUser) -> User {
+    use crate::schema::users::dsl::*;
 
-    diesel::insert_into(users::table)
+    diesel::insert_into(users)
         .values(&new_user)
         .get_result(connection)
         .expect("Cannot insert to table")
