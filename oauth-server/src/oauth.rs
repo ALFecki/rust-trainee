@@ -23,11 +23,11 @@ pub async fn get_id_token_jwt(id_token_response: IdToken) -> Result<Jwt, &'stati
         .query(&[("id_token", id_token_response.id_token)])
         .send()
         .await;
-    // println!("{}", id_token_info_request.unwrap().text().await.unwrap());
+
     if let Ok(response) = id_token_info_request {
         if let Ok(text) = response.text().await {
             return Ok(serde_json::from_str::<Jwt>(text.as_str()).unwrap());
         }
     }
-    Err("Something wrong")
+    Err("ID_TOKEN validation error")
 }

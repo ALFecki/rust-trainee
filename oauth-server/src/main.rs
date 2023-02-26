@@ -21,6 +21,11 @@ mod models;
 mod oauth;
 mod schema;
 
+#[get("/")]
+async fn index() -> impl Responder {
+    HttpResponse::Found().append_header((LOCATION, "/auth")).finish()
+}
+
 #[get("/auth")]
 async fn authorize() -> impl Responder {
     HttpResponse::Ok()
@@ -42,12 +47,12 @@ async fn authorize() -> impl Responder {
         .finish()
 }
 
-#[get("/test")]
-async fn test(
+#[get("/login")]
+async fn login(
     query: Option<Query<GoogleResponse>>,
     connection: Data<PostgresConnection>,
 ) -> impl Responder {
-    let mut pg_connection = connection.0.lock().await;
+    let mut pg_connection = connection.lock().await;
     dotenv::dotenv().ok();
     let response_body = match query {
         Some(response) => format!(
@@ -92,18 +97,19 @@ async fn test(
     }
 }
 
-pub struct PostgresConnection(Arc<Mutex<PgConnection>>);
+type PostgresConnection = Arc<Mutex<PgConnection>>;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let connection = Data::new(PostgresConnection(Arc::new(Mutex::new(
+    let connection = Data::new(Arc::new(Mutex::new(
         database_connection().unwrap(),
-    ))));
+    )));
     HttpServer::new(move || {
         App::new()
             .app_data(Data::clone(&connection))
+            .service(index)
             .service(authorize)
-            .service(test)
+            .service(login)
     })
     .bind(("127.0.0.1", 8080))
     .expect("Cannot run application on port 8080")

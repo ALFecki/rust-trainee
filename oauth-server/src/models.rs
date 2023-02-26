@@ -1,5 +1,7 @@
+use crate::dbcontroller::select_user;
 use crate::schema::*;
 use diesel::prelude::*;
+use std::borrow::Borrow;
 
 #[derive(Queryable, Clone)]
 pub struct User {
@@ -28,15 +30,7 @@ impl NewUser {
     }
 
     pub fn is_exists(&self, connection: &mut PgConnection) -> bool {
-        use crate::schema::users::dsl::*;
-        use crate::schema::users::email;
-
-        let user_in_db = users
-            .filter(email.eq(&self.email))
-            .limit(1)
-            .load::<User>(connection)
-            .expect("some");
-
-        !user_in_db.is_empty()
+        let user_in_db = select_user(connection, self.email.clone());
+        user_in_db.is_some()
     }
 }

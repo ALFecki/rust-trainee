@@ -1,11 +1,9 @@
 use crate::models::{NewUser, User};
 use crate::schema::users;
-use diesel::pg::Pg;
 use diesel::ExpressionMethods;
 use diesel::RunQueryDsl;
-use diesel::{AsChangeset, Connection, Insertable, PgConnection, QueryDsl, Queryable};
+use diesel::{Connection, PgConnection, QueryDsl};
 use std::env;
-use std::marker::PhantomData;
 
 pub fn database_connection() -> Result<PgConnection, String> {
     dotenv::dotenv().ok();
