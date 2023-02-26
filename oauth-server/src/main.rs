@@ -1,12 +1,15 @@
-use std::string::ToString;
-use actix_web::error::UrlencodedError::ContentType;
-use actix_web::http::header::{HeaderValue, CONTENT_TYPE, LOCATION};
-use actix_web::http::{header, StatusCode};
-use actix_web::web::{Query, Redirect};
-use actix_web::{get, HttpRequest};
+use actix_web::http::header::{HeaderValue, LOCATION};
+use actix_web::http::StatusCode;
+use actix_web::web::Query;
+use actix_web::get;
 use actix_web::{App, HttpResponse, HttpServer, Responder};
+use openidconnect::core::CoreClient;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+
+mod dbcontroller;
+mod schema;
+mod models;
 
 static CLIENT_ID: &str = "526205543724-jkq58jp5ch15a754pbkilr4n2sh1lbka.apps.googleusercontent.com";
 static CLIENT_SECRET: &str = "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";
@@ -16,6 +19,18 @@ static CLIENT_SECRET: &str = "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";
 pub struct GoogleResponse {
     code: String,
 }
+
+
+
+
+
+
+// #[get("/auth")]
+// async fn authorization() -> impl Responder {
+//     todo!()
+// }
+
+
 
 #[get("/auth")]
 async fn authorize() -> impl Responder {
@@ -38,7 +53,7 @@ async fn authorize() -> impl Responder {
 
 #[get("/test")]
 async fn test(query: Option<Query<GoogleResponse>>) -> impl Responder {
-    // println!("{}", query.unwrap().code);
+
     let response_body = format!(
         "code={}&\
         client_id={}&\
@@ -74,6 +89,7 @@ async fn test2(query: Query<String>) -> impl Responder {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+
     HttpServer::new(|| App::new().service(authorize).service(test).service(test2))
         .bind(("127.0.0.1", 8080))
         .expect("Cannot run application on port 8080")

@@ -8,6 +8,8 @@ edition = "2021"
 [dependencies]
 serde = {version ="1.0.152", features=["derive"]}
 actix-web = "4.3.0"
-diesel = "2.0.3"
+diesel = {version = "2.0.3", features = ["postgres"]}
+dotenv = "0.15.0"
 mime = "0.3.16"
 reqwest = "0.11.14"
+openidconnect = "2.5.0"
