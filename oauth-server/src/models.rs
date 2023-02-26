@@ -1,11 +1,11 @@
 use crate::schema::*;
 use diesel::prelude::*;
 
-#[derive(Queryable)]
+#[derive(Queryable, Clone)]
 pub struct User {
-    id: i32,
-    name: String,
-    email: String,
+    pub id: i32,
+    pub name: String,
+    pub email: String,
 }
 
 #[derive(Insertable)]
@@ -19,11 +19,11 @@ impl NewUser {
     pub fn new(email: String) -> Self {
         Self {
             name: {
-                let vec: Vec<&str> = email.clone().split('@').collect();
+                let email_cpy = email.clone();
+                let vec: Vec<&str> = email_cpy.split('@').collect();
                 vec[0].to_string()
             },
             email,
-
         }
     }
 

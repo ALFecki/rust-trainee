@@ -1,11 +1,11 @@
 use crate::models::{NewUser, User};
 use crate::schema::users;
-use crate::schema::users::{email, name};
 use diesel::pg::Pg;
 use diesel::ExpressionMethods;
 use diesel::RunQueryDsl;
 use diesel::{AsChangeset, Connection, Insertable, PgConnection, QueryDsl, Queryable};
 use std::env;
+use std::marker::PhantomData;
 
 pub fn database_connection() -> Result<PgConnection, String> {
     dotenv::dotenv().ok();
@@ -24,4 +24,16 @@ pub fn create_user(connection: &mut PgConnection, new_user: NewUser) -> User {
         .values(&new_user)
         .get_result(connection)
         .expect("Cannot insert to table")
+}
+
+pub fn select_user(connection: &mut PgConnection, email: String) -> Option<User> {
+    let user_in_db = users::table
+        .filter(users::email.eq(email))
+        .limit(1)
+        .load::<User>(connection)
+        .expect("Cannot select from table");
+    match user_in_db.is_empty() {
+        true => None,
+        false => Some(user_in_db[0].clone()),
+    }
 }
