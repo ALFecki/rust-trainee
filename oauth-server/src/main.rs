@@ -1,11 +1,15 @@
+use std::sync::Arc;
+use crate::dbcontroller::database_connection;
+use crate::models::NewUser;
 use actix_web::get;
 use actix_web::http::header::{HeaderValue, LOCATION};
 use actix_web::http::StatusCode;
-use actix_web::web::{Json, Query};
+use actix_web::web::{Data, Json, Query};
 use actix_web::{App, HttpResponse, HttpServer, Responder};
-use openidconnect::core::CoreClient;
+use diesel::PgConnection;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 mod dbcontroller;
 mod models;
@@ -51,7 +55,7 @@ async fn authorize() -> impl Responder {
 }
 
 #[get("/test")]
-async fn test(query: Option<Query<GoogleResponse>>) -> impl Responder {
+async fn test(query: Option<Query<GoogleResponse>>, connection: Arc<Mutex<PgConnection>>) -> impl Responder {
     let response_body = match query {
         Some(response) => format!(
             "code={}&\
@@ -91,7 +95,13 @@ async fn test(query: Option<Query<GoogleResponse>>) -> impl Responder {
         Err(_) => Err("Parsing id_token error".to_string()),
     };
     match jwt {
-        Ok(val) => Json(val),
+        Ok(val) => {
+            if let Some(mail) = val.email {
+                let user = NewUser::new(mail);
+                if !user.is_exists() {}
+            }
+            Json(val)
+        }
         Err(str) => Json(JWT {
             email: None,
             error: Some(str),
@@ -115,11 +125,20 @@ pub async fn get_id_token_jwt(id_token_response: IdToken) -> Result<JWT, String>
     Err("Something wrong".to_string())
 }
 
+pub struct PostgresConnection(Arc<Mutex<PgConnection>>);
+
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| App::new().service(authorize).service(test))
-        .bind(("127.0.0.1", 8080))
-        .expect("Cannot run application on port 8080")
-        .run()
-        .await
+    let connection = Data::new( PostgresConnection(Arc::new(Mutex::new(database_connection().unwrap()))));
+    HttpServer::new(move || {
+        App::new()
+            .app_data(Data::clone(&connection))
+            .service(authorize)
+            .service(test)
+    })
+    .bind(("127.0.0.1", 8080))
+    .expect("Cannot run application on port 8080")
+    .run()
+    .await
 }

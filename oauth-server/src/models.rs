@@ -1,4 +1,3 @@
-use crate::schema::users::email;
 use crate::schema::*;
 use diesel::prelude::*;
 
@@ -16,9 +15,21 @@ pub struct NewUser {
     email: String,
 }
 
-impl User {
+impl NewUser {
+    pub fn new(email: String) -> Self {
+        Self {
+            name: {
+                let vec: Vec<&str> = email.clone().split('@').collect();
+                vec[0].to_string()
+            },
+            email,
+
+        }
+    }
+
     pub fn is_exists(&self, connection: &mut PgConnection) -> bool {
-        use crate::schema::users::dsl::users;
+        use crate::schema::users::dsl::*;
+        use crate::schema::users::email;
 
         let user_in_db = users
             .filter(email.eq(&self.email))
