@@ -1,0 +1,14 @@
+database:
+  name: oauth-test
+  username: root
+  password: root
+  host: localhost
+  port: 5432
+
+client:
+  id: 526205543724-jkq58jp5ch15a754pbkilr4n2sh1lbka.apps.googleusercontent.com
+  secret: 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
+
+redirect:
+  url: http://localhost:8080/login
+

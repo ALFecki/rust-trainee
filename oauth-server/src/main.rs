@@ -1,6 +1,6 @@
-use crate::dbcontroller::{create_user, database_connection, select_user};
+use crate::dbcontroller::*;
 use crate::models::NewUser;
-use crate::oauth::{get_id_token, get_id_token_jwt};
+use crate::oauth::*;
 use crate::oauth_models::{GoogleResponse, IdToken, Jwt};
 use actix_web::get;
 use actix_web::http::header::{HeaderValue, LOCATION};
@@ -10,9 +10,9 @@ use actix_web::{App, HttpResponse, HttpServer, Responder};
 use diesel::PgConnection;
 
 use std::borrow::BorrowMut;
-use std::env;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use yaml_config::load;
 
 mod oauth_models;
 
@@ -21,13 +21,22 @@ mod models;
 mod oauth;
 mod schema;
 
+#[derive(Clone)]
+struct YamlData {
+    redirect_url: String,
+    client_id: String,
+    client_secret: String,
+}
+
 #[get("/")]
 async fn index() -> impl Responder {
-    HttpResponse::Found().append_header((LOCATION, "/auth")).finish()
+    HttpResponse::Found()
+        .append_header((LOCATION, "/auth"))
+        .finish()
 }
 
 #[get("/auth")]
-async fn authorize() -> impl Responder {
+async fn authorize(config_data: Data<YamlData>) -> impl Responder {
     HttpResponse::Ok()
         .status(StatusCode::TEMPORARY_REDIRECT)
         .append_header((
@@ -40,7 +49,7 @@ async fn authorize() -> impl Responder {
                 response_type=code&\
                 redirect_uri={}&\
                 client_id=526205543724-jkq58jp5ch15a754pbkilr4n2sh1lbka.apps.googleusercontent.com",
-                &env::var("REDIRECT_URL").expect("redirect url must be setup")
+                config_data.redirect_url
             ))
             .unwrap(),
         ))
@@ -51,9 +60,9 @@ async fn authorize() -> impl Responder {
 async fn login(
     query: Option<Query<GoogleResponse>>,
     connection: Data<PostgresConnection>,
+    config_data: Data<YamlData>,
 ) -> impl Responder {
     let mut pg_connection = connection.lock().await;
-    dotenv::dotenv().ok();
     let response_body = match query {
         Some(response) => format!(
             "code={}&\
@@ -62,9 +71,9 @@ async fn login(
             redirect_uri={}&\
             grant_type=authorization_code",
             response.code.trim(),
-            &env::var("CLIENT_ID").expect("client_id must be setup"),
-            &env::var("CLIENT_SECRET").expect("client_secret must be setup"),
-            &env::var("REDIRECT_URL").expect("redirect url must be setup")
+            config_data.client_id,
+            config_data.client_secret,
+            config_data.redirect_url
         ),
         None => {
             return Json(Jwt::error("Authorization error"));
@@ -81,17 +90,19 @@ async fn login(
     };
     match jwt {
         Ok(val) => {
-            let mut response = Jwt::default();
+            let mut response = Err("Error with database operation");
             if let Some(mail) = val.email {
                 let user = NewUser::new(mail.clone());
                 if !user.is_exists(pg_connection.borrow_mut()) {
-                    response = Jwt::from_user(create_user(pg_connection.borrow_mut(), user))
+                    response = create_user(pg_connection.borrow_mut(), user)
                 } else {
-                    response =
-                        Jwt::from_user(select_user(pg_connection.borrow_mut(), mail).unwrap())
+                    response = Ok(select_user(pg_connection.borrow_mut(), mail).unwrap())
                 };
             };
-            Json(response)
+            match response {
+                Ok(res) => Json(Jwt::from_user(res)),
+                Err(str) => Json(Jwt::error(str)),
+            }
         }
         Err(str) => Json(Jwt::error(str)),
     }
@@ -101,12 +112,42 @@ type PostgresConnection = Arc<Mutex<PgConnection>>;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let config = load("./config.yaml", None).expect("Cannot open config.yaml");
+
+    let database_url = format!(
+        "postgres://{}:{}@{}:{}/{}",
+        *config["DATABASE_USERNAME"]
+            .as_string()
+            .expect("USERNAME isn't set"),
+        *config["DATABASE_PASSWORD"]
+            .as_string()
+            .expect("PASSWORD isn't set"),
+        *config["DATABASE_HOST"].as_string().expect("HOST isn't set"),
+        *config["DATABASE_PORT"].as_i64().expect("PORT isn't set"),
+        *config["DATABASE_NAME"].as_string().expect("NAME isn't set"),
+    );
+    let config_data = YamlData {
+        client_id: config["CLIENT_ID"]
+            .as_string()
+            .expect("CLIENT_ID isn't set")
+            .to_string(),
+        client_secret: config["CLIENT_SECRET"]
+            .as_string()
+            .expect("CLIENT_SECRET isn't set")
+            .to_string(),
+        redirect_url: config["REDIRECT_URL"]
+            .as_string()
+            .expect("REDIRECT_URL isn't set")
+            .to_string(),
+    };
     let connection = Data::new(Arc::new(Mutex::new(
-        database_connection().unwrap(),
+        database_connection(database_url).expect("Database connection error"),
     )));
+
     HttpServer::new(move || {
         App::new()
             .app_data(Data::clone(&connection))
+            .app_data(Data::new(config_data.clone()))
             .service(index)
             .service(authorize)
             .service(login)

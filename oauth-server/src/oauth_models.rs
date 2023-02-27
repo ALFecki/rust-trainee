@@ -10,7 +10,6 @@ pub struct GoogleResponse {
 pub struct Jwt {
     pub id: Option<i32>,
     pub email: Option<String>,
-    pub name: Option<String>,
     pub error: Option<String>,
 }
 
@@ -19,7 +18,6 @@ impl Jwt {
         Self {
             id: Some(user.id),
             email: Some(user.email),
-            name: Some(user.name),
             error: None,
         }
     }
