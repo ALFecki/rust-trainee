@@ -21,7 +21,7 @@ mod models;
 mod oauth;
 mod schema;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct YamlData {
     redirect_url: String,
     client_id: String,
@@ -81,7 +81,7 @@ async fn login(
     };
 
     let response_content = match get_id_token(response_body).await {
-        Ok(text) => text,
+        Ok(text) => { println!("{}", text); text},
         Err(str) => return Json(Jwt::error(str)),
     };
     let jwt = match serde_json::from_str::<IdToken>(response_content.as_str()) {
@@ -93,16 +93,17 @@ async fn login(
             let mut response = Err("Error with database operation");
             if let Some(mail) = val.email {
                 let user = NewUser::new(mail.clone());
-                if !user.is_exists(pg_connection.borrow_mut()) {
-                    response = create_user(pg_connection.borrow_mut(), user)
+                let conn = pg_connection.borrow_mut();
+                if !user.is_exists(conn) {
+                    response = create_user(conn, user)
                 } else {
-                    response = Ok(select_user(pg_connection.borrow_mut(), mail).unwrap())
+                    response = Ok(select_user(conn, mail).unwrap())
                 };
             };
-            match response {
-                Ok(res) => Json(Jwt::from_user(res)),
-                Err(str) => Json(Jwt::error(str)),
+            if let Ok(res) = response {
+                return Json(Jwt::from_user(res));
             }
+            Json(Jwt::error(response.err().unwrap()))
         }
         Err(str) => Json(Jwt::error(str)),
     }
@@ -140,6 +141,7 @@ async fn main() -> std::io::Result<()> {
             .expect("REDIRECT_URL isn't set")
             .to_string(),
     };
+    println!("{:?}", config_data);
     let connection = Data::new(Arc::new(Mutex::new(
         database_connection(database_url).expect("Database connection error"),
     )));
