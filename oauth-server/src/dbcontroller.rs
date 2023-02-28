@@ -14,25 +14,34 @@ pub fn database_connection(database_url: String) -> Result<PgConnection, &'stati
 pub fn create_user(connection: &mut PgConnection, new_user: NewUser) -> Result<User, &str> {
     use crate::schema::users::dsl::*;
 
-    match diesel::insert_into(users)
+    diesel::insert_into(users)
         .values(&new_user)
         .get_result::<User>(connection)
-    {
-        Ok(user) => Ok(user),
-        Err(_) => Err("Error insert into table"),
-    }
+        .map_err(|_e| "Error insert into table")
 }
 
-pub fn select_user(connection: &mut PgConnection, email: &str) -> Option<User> {
-    match users::table
+pub fn select_user(connection: &mut PgConnection, email: &str) -> Result<Option<User>, String> {
+    users::table
         .filter(users::email.eq(email.to_string()))
         .limit(1)
         .load::<User>(connection)
-    {
-        Ok(user) => match user.is_empty() {
-            true => None,
-            false => Some(user[0].clone()),
-        },
-        Err(_) => None,
-    }
+        .map(|result| {
+            if !result.is_empty() {
+                Some(result[0].clone())
+            } else {
+                None
+            }
+        })
+        .map_err(|e| e.to_string())
+
+    // res.map_err()
+
+    // todo!()
+    // {
+    //     Ok(user) => match user.is_empty() {
+    //         true => None,
+    //         false => Some(user[0].clone()),
+    //     },
+    //     Err(_) => None,
+    // }
 }

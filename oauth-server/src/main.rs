@@ -9,8 +9,11 @@ use actix_web::web::{Data, Json, Query};
 use actix_web::{App, HttpResponse, HttpServer, Responder};
 use diesel::PgConnection;
 
+use actix_web::error::ErrorBadRequest;
 use std::borrow::BorrowMut;
-
+use std::io;
+use std::io::ErrorKind;
+use std::io::ErrorKind::{InvalidData, InvalidInput, NotFound};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use yaml_config::load;
@@ -27,6 +30,13 @@ struct YamlData {
     redirect_url: String,
     client_id: String,
     client_secret: String,
+}
+
+fn create_error(
+    error_kind: ErrorKind,
+    description: &str,
+) -> Result<Json<Jwt>, actix_web::error::Error> {
+    Err(ErrorBadRequest(io::Error::new(error_kind, description)))
 }
 
 #[get("/")]
@@ -64,7 +74,9 @@ async fn login(
     config_data: Data<YamlData>,
 ) -> impl Responder {
     let mut pg_connection = connection.lock().await;
+
     let response_body = match query {
+        // make request for id_token
         Some(response) => format!(
             "code={}&\
             client_id={}&\
@@ -77,36 +89,47 @@ async fn login(
             config_data.redirect_url
         ),
         None => {
-            return Json(Jwt::error("Authorization error"));
+            return create_error(InvalidData, "Authorization error");
         }
     };
 
     let response_content = match get_id_token(response_body).await {
+        // get id_token response
         Ok(text) => text,
-        Err(str) => return Json(Jwt::error(str)),
+        Err(str) => {
+            return create_error(InvalidData, str);
+        }
     };
     let jwt = match serde_json::from_str::<IdToken>(response_content.as_str()) {
         Ok(json) => get_id_token_jwt(json).await,
-        Err(_) => return Json(Jwt::error("Parsing id_token error")),
+        Err(_) => {
+            return create_error(NotFound, "Parsing id_token error");
+        }
     };
-    match jwt {
+    return match jwt {
         Ok(val) => {
             if let Some(mail) = val.email {
                 let user = NewUser::new(mail.as_str());
                 let conn = pg_connection.borrow_mut();
 
-                return Json(Jwt::from_user(match select_user(conn, mail.as_str()) {
-                    Some(u) => u,
-                    None => match create_user(conn, user) {
-                        Ok(u) => u,
-                        Err(str) => return Json(Jwt::error(str)),
+                match select_user(conn, mail.as_str()) {
+                    Ok(user_option) => match user_option {
+                        Some(founded_user) => Ok(Json(Jwt::from_user(founded_user))),
+                        None => {
+                            return match create_user(conn, user) {
+                                Ok(created_user) => Ok(Json(Jwt::from_user(created_user))),
+                                Err(str) => create_error(InvalidInput, str),
+                            }
+                        }
                     },
-                }));
-            };
-            Json(Jwt::error("Error with database operation"))
+                    Err(str) => return create_error(InvalidData, str.as_str()),
+                }
+            } else {
+                return create_error(InvalidData, "Error parsing jwt");
+            }
         }
-        Err(str) => Json(Jwt::error(str)),
-    }
+        Err(str) => create_error(InvalidData, str),
+    };
 }
 
 type PostgresConnection = Arc<Mutex<PgConnection>>;

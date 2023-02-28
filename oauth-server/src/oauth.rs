@@ -17,6 +17,7 @@ pub async fn get_id_token(response_body: String) -> Result<String, &'static str>
 }
 
 pub async fn get_id_token_jwt(id_token_response: IdToken) -> Result<Jwt, &'static str> {
+    // id_token info
     let client = Client::new();
     let id_token_info_request = client
         .get("https://oauth2.googleapis.com/tokeninfo")

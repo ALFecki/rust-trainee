@@ -10,7 +10,6 @@ pub struct GoogleResponse {
 pub struct Jwt {
     pub id: Option<i32>,
     pub email: Option<String>,
-    pub error: Option<String>,
 }
 
 impl Jwt {
@@ -18,17 +17,12 @@ impl Jwt {
         Self {
             id: Some(user.id),
             email: Some(user.email),
-            error: None,
-        }
-    }
-
-    pub fn error(str: &str) -> Self {
-        Self {
-            error: Some(str.to_string()),
-            ..Self::default()
         }
     }
 }
+
+#[derive(Serialize)]
+pub struct OauthError(pub String);
 
 #[derive(Serialize, Deserialize)]
 pub struct IdToken {
