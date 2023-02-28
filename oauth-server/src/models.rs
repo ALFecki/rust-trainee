@@ -1,4 +1,3 @@
-use crate::dbcontroller::select_user;
 use crate::schema::*;
 use diesel::prelude::*;
 
@@ -15,12 +14,9 @@ pub struct NewUser {
 }
 
 impl NewUser {
-    pub fn new(email: String) -> Self {
-        Self { email }
-    }
-
-    pub fn is_exists(&self, connection: &mut PgConnection) -> bool {
-        let user_in_db = select_user(connection, self.email.clone());
-        user_in_db.is_some()
+    pub fn new(email: &str) -> Self {
+        Self {
+            email: email.to_string(),
+        }
     }
 }

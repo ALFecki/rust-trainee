@@ -10,6 +10,7 @@ use actix_web::{App, HttpResponse, HttpServer, Responder};
 use diesel::PgConnection;
 
 use std::borrow::BorrowMut;
+
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use yaml_config::load;
@@ -81,7 +82,7 @@ async fn login(
     };
 
     let response_content = match get_id_token(response_body).await {
-        Ok(text) => { println!("{}", text); text},
+        Ok(text) => text,
         Err(str) => return Json(Jwt::error(str)),
     };
     let jwt = match serde_json::from_str::<IdToken>(response_content.as_str()) {
@@ -90,20 +91,19 @@ async fn login(
     };
     match jwt {
         Ok(val) => {
-            let mut response = Err("Error with database operation");
             if let Some(mail) = val.email {
-                let user = NewUser::new(mail.clone());
+                let user = NewUser::new(mail.as_str());
                 let conn = pg_connection.borrow_mut();
-                if !user.is_exists(conn) {
-                    response = create_user(conn, user)
-                } else {
-                    response = Ok(select_user(conn, mail).unwrap())
-                };
+
+                return Json(Jwt::from_user(match select_user(conn, mail.as_str()) {
+                    Some(u) => u,
+                    None => match create_user(conn, user) {
+                        Ok(u) => u,
+                        Err(str) => return Json(Jwt::error(str)),
+                    },
+                }));
             };
-            if let Ok(res) = response {
-                return Json(Jwt::from_user(res));
-            }
-            Json(Jwt::error(response.err().unwrap()))
+            Json(Jwt::error("Error with database operation"))
         }
         Err(str) => Json(Jwt::error(str)),
     }
@@ -141,7 +141,6 @@ async fn main() -> std::io::Result<()> {
             .expect("REDIRECT_URL isn't set")
             .to_string(),
     };
-    println!("{:?}", config_data);
     let connection = Data::new(Arc::new(Mutex::new(
         database_connection(database_url).expect("Database connection error"),
     )));

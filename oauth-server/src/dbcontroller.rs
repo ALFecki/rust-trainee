@@ -23,9 +23,9 @@ pub fn create_user(connection: &mut PgConnection, new_user: NewUser) -> Result<U
     }
 }
 
-pub fn select_user(connection: &mut PgConnection, email: String) -> Option<User> {
-    return match users::table
-        .filter(users::email.eq(email))
+pub fn select_user(connection: &mut PgConnection, email: &str) -> Option<User> {
+    match users::table
+        .filter(users::email.eq(email.to_string()))
         .limit(1)
         .load::<User>(connection)
     {
@@ -34,5 +34,5 @@ pub fn select_user(connection: &mut PgConnection, email: String) -> Option<User>
             false => Some(user[0].clone()),
         },
         Err(_) => None,
-    };
+    }
 }
