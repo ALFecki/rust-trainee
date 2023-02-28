@@ -135,7 +135,7 @@ async fn login(
 type PostgresConnection = Arc<Mutex<PgConnection>>;
 
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> io::Result<()> {
     let config = load("./config.yaml", None).expect("Cannot open config.yaml");
 
     let database_url = format!(

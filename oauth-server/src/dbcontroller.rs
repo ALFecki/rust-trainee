@@ -33,15 +33,4 @@ pub fn select_user(connection: &mut PgConnection, email: &str) -> Result<Option<
             }
         })
         .map_err(|e| e.to_string())
-
-    // res.map_err()
-
-    // todo!()
-    // {
-    //     Ok(user) => match user.is_empty() {
-    //         true => None,
-    //         false => Some(user[0].clone()),
-    //     },
-    //     Err(_) => None,
-    // }
 }
