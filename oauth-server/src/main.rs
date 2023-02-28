@@ -118,7 +118,7 @@ async fn login(
                         None => {
                             return match create_user(conn, user) {
                                 Ok(created_user) => Ok(Json(Jwt::from_user(created_user))),
-                                Err(str) => create_error(InvalidInput, str),
+                                Err(str) => create_error(InvalidInput, str.as_str()),
                             }
                         }
                     },

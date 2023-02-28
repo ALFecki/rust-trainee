@@ -11,13 +11,13 @@ pub fn database_connection(database_url: String) -> Result<PgConnection, &'stati
     }
 }
 
-pub fn create_user(connection: &mut PgConnection, new_user: NewUser) -> Result<User, &str> {
+pub fn create_user(connection: &mut PgConnection, new_user: NewUser) -> Result<User, String> {
     use crate::schema::users::dsl::*;
 
     diesel::insert_into(users)
         .values(&new_user)
         .get_result::<User>(connection)
-        .map_err(|_e| "Error insert into table")
+        .map_err(|e| e.to_string())
 }
 
 pub fn select_user(connection: &mut PgConnection, email: &str) -> Result<Option<User>, String> {
