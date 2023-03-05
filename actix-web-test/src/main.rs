@@ -18,6 +18,8 @@ use mime::{Mime, Name};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use wasmtime::{Engine, Linker, Module, Store};
+use wasmtime_wasi::WasiCtxBuilder;
 
 #[derive(Default, Serialize)]
 struct Counters {
@@ -127,15 +129,46 @@ async fn counter_delete(counters: Data<Counters>) -> impl Responder {
     HttpResponse::Ok().body(format!("Counter reset, delete counter is {}", temp))
 }
 
+
+#[get("/")]
+async fn index(counters: Data<Counters>) -> impl Responder {
+
+    return Err(());
+
+}
+
 #[main]
 async fn main() -> std::io::Result<()> {
     let counters: Data<Counters> = Data::new(Counters::default());
+
+    let engine = Engine::default();
+    let module = Module::from_file(&engine, "wasm.wasm").unwrap();
+
+    for export in module.exports() {
+        println!("{:?}", export);
+    }
+
+    let mut linker = Linker::new(&engine);
+    let wasi = WasiCtxBuilder::new()
+        .inherit_stdio()
+        .inherit_args().unwrap()
+        .build();
+    let mut store = Store::new(&engine, wasi);
+
+    wasmtime_wasi::add_to_linker(&mut linker, |s| s).unwrap();
+
+    let link = linker.instantiate(&mut store, &module).unwrap();
+    let add_fn = link.get_typed_func::<(u32, u32), u32>(&mut store, "add").unwrap();
+    println!("{}", add_fn.call(store, (3, 2)).unwrap());
+
+
 
     HttpServer::new(move || {
         App::new()
             .app_data(Data::clone(&counters))
             .service(counter_get)
             .service(counter_delete)
+            .service(index)
     })
     .bind(("127.0.0.1", 8080))?
     .run()
