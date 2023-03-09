@@ -7,21 +7,20 @@ use actix_web::body::EitherBody;
 use actix_web::web::{Data, Json, Query};
 use actix_web::{delete, get, main, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use serde::{Deserialize, Serialize};
-use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::io::ErrorKind::NotFound;
+use std::fs;
+use std::fs::FileType;
 
 use actix_web::error::ContentTypeError::{ParseError, UnknownEncoding};
 use actix_web::error::ReadlinesError::ContentTypeError;
-use actix_web::http::header::ACCEPT;
-use mime::{Mime, Name};
+use mime::Mime;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use wasmtime::{Engine, Linker, Module, Store};
-use wasmtime_wasi::WasiCtxBuilder;
+use wasmer::{Engine, FunctionEnv, imports, Instance, MemoryView, Module, Store, TypedFunction, WasmPtr, WasmRef};
+use wasmer_wasi::{generate_import_object_from_env, get_wasi_version, WasiState};
 
-#[derive(Default, Serialize)]
+#[derive(Default, Serialize, Debug)]
 struct Counters {
     counter: AtomicU32,
     delete_counter: AtomicU32,
@@ -131,37 +130,106 @@ async fn counter_delete(counters: Data<Counters>) -> impl Responder {
 
 
 #[get("/")]
-async fn index(counters: Data<Counters>) -> impl Responder {
+async fn index(counters: Data<Counters>,
+               params: Option<Query<CustomCounterQuery>>,
+               counter: Option<Query<CustomAdd>>
+) -> impl Responder {
+    let mut response = String::new();
 
-    return Err(());
+    let files = match  fs::read_dir("./")  {
+        Ok(val) => val,
+        Err(err) => return err.to_string()
+    };
+
+    let mut modules = vec![];
+
+    for file in files {
+        if let Ok(f) = file {
+            if let Some(file_name) = f.file_name().clone().to_str() {
+                if file_name.contains(".wasm") {
+                    modules.push(file_name.to_string());
+                }
+            }
+        }
+    }
+
+    for module in modules {
+
+        let mut store = Store::default();
+        let wasm_bytes = fs::read(module).unwrap();
+        let module = Module::new(&store, wasm_bytes).unwrap();
+        for export in module.exports() {
+            println!("{:?}", export);
+        }
+
+        let wasi_env = WasiState::new("command-name").finalize(&mut store).unwrap();
+
+        let version = get_wasi_version(&module, true).unwrap();
+        let imports = generate_import_object_from_env(&mut store, &wasi_env.env, version);
+        let instance = Instance::new(&mut store, &module, &imports).unwrap();
+
+        let mem = instance.context_mut().memory(0).allocate(8);
+
+
+
+
+        // let module = Module::from_file(&engine, module.as_str()).unwrap();
+        //
+        //
+        // let mut linker = Linker::new(&engine);
+        // let wasi = WasiCtxBuilder::new()
+        //     .inherit_stdio()
+        //     .inherit_args().unwrap()
+        //     .build();
+        // let mut store = Store::new(&engine, wasi);
+        // wasmtime_wasi::add_to_linker(&mut linker, |s| s).unwrap();
+        // let link = linker.instantiate(&mut store, &module).unwrap();
+        // let memory = link.get_memory(&mut store, "memory").unwrap();
+        //
+        // let buf = memory.data_ptr(&mut store);
+        //
+        // memory.write(&mut store, 256, b"389weyfw").unwrap();
+        // let change = link.get_typed_func::<*mut u8, ()>(&mut store, "change_counters").unwrap();
+        // change.call(&mut store, buf).unwrap();
+
+
+
+
+        // let alloc = instance.get_typed_func::<(), &u8>(&mut store, "alloc").unwrap();
+        // let alloc = instance.get_func(&mut store, "alloc").ok_or(Err("Something"))?.get2::<i32, i32>()?;
+        // let alloc = link.get_typed_func::<(), ()>(&mut store, "alloc").unwrap();
+        // alloc.call(&mut store, ()).unwrap();
+
+
+        // let buf = alloc.call(&mut store, &[], &mut []).unwrap();
+
+
+
+
+        // for export in module.exports() {
+        //     println!("{:?}", export);
+        // }
+        // let memory = link.get_memory(&store, "memory").unwrap();
+        // let alloc_fn = link.get_func(&store, "alloc").unwrap();
+        // let alloc_fn = link.get_typed_func::<(), >(&mut store, "alloc").unwrap();
+        // let buf = alloc_fn.call(store, ()).unwrap();
+        // memory.write(&store, memory.data_size(&store), &buf).unwrap();
+        // let add_fn = link.get_typed_func::<*mut, String>(&mut store, "change_counters").unwrap();
+        // response.push_str(format!("Counter: {}", add_fn.call(store, ().unwrap()).as_str());
+        // println!("{:?}", add_fn.call(store, (1, 1, 2)).unwrap());
+    }
+
+    // for module in modules {
+    //
+    // }
+    return response;
+    // return Err(());
 
 }
 
 #[main]
 async fn main() -> std::io::Result<()> {
     let counters: Data<Counters> = Data::new(Counters::default());
-
-    let engine = Engine::default();
-    let module = Module::from_file(&engine, "wasm.wasm").unwrap();
-
-    for export in module.exports() {
-        println!("{:?}", export);
-    }
-
-    let mut linker = Linker::new(&engine);
-    let wasi = WasiCtxBuilder::new()
-        .inherit_stdio()
-        .inherit_args().unwrap()
-        .build();
-    let mut store = Store::new(&engine, wasi);
-
-    wasmtime_wasi::add_to_linker(&mut linker, |s| s).unwrap();
-
-    let link = linker.instantiate(&mut store, &module).unwrap();
-    let add_fn = link.get_typed_func::<(u32, u32), u32>(&mut store, "add").unwrap();
-    println!("{}", add_fn.call(store, (3, 2)).unwrap());
-
-
 
     HttpServer::new(move || {
         App::new()
