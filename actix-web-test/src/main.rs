@@ -9,16 +9,16 @@ use actix_web::{delete, get, main, App, HttpRequest, HttpResponse, HttpServer, R
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::fs::FileType;
 
 use actix_web::error::ContentTypeError::{ParseError, UnknownEncoding};
 use actix_web::error::ReadlinesError::ContentTypeError;
+use anyhow::Error;
 use mime::Mime;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use wasmer::{Engine, FunctionEnv, imports, Instance, MemoryView, Module, Store, TypedFunction, WasmPtr, WasmRef};
-use wasmer_wasi::{generate_import_object_from_env, get_wasi_version, WasiState};
+use wasmtime::{Caller, Engine, Extern, Func, Linker, Module, Store};
+use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
 #[derive(Default, Serialize, Debug)]
 struct Counters {
@@ -128,103 +128,117 @@ async fn counter_delete(counters: Data<Counters>) -> impl Responder {
     HttpResponse::Ok().body(format!("Counter reset, delete counter is {}", temp))
 }
 
+fn log_str(mut caller: Caller<'_, WasiCtx>, ptr: i32, len: i32) -> Result<(), Error> {
+    let mem = match caller.get_export("memory") {
+        Some(Extern::Memory(mem)) => mem,
+        _ => anyhow::bail!("failed to find host memory"),
+    };
+
+    let data = mem
+        .data(&caller)
+        .get(ptr as u32 as usize..)
+        .and_then(|arr| arr.get(..len as u32 as usize));
+    let string = match data {
+        Some(data) => match std::str::from_utf8(data) {
+            Ok(s) => s,
+            Err(_) => anyhow::bail!("invalid utf-8"),
+        },
+        None => anyhow::bail!("pointer/length out of bounds"),
+    };
+    println!("{}", string);
+    Ok(())
+}
+
+fn set_str(mut caller: Caller<'_, WasiCtx>, ptr: i32, len: i32) -> Result<(), Error> {
+    let mem = match caller.get_export("memory") {
+        Some(Extern::Memory(mem)) => mem,
+        _ => anyhow::bail!("failed to find host memory"),
+    };
+
+    mem.write(&mut caller, ptr as usize, "Hello, World!".as_bytes()).unwrap();
+    Ok(())
+
+}
 
 #[get("/")]
-async fn index(counters: Data<Counters>,
-               params: Option<Query<CustomCounterQuery>>,
-               counter: Option<Query<CustomAdd>>
+async fn index(
+    counters: Data<Counters>,
+    params: Option<Query<CustomCounterQuery>>,
+    counter: Option<Query<CustomAdd>>,
 ) -> impl Responder {
     let mut response = String::new();
 
-    let files = match  fs::read_dir("./")  {
+    let files = match fs::read_dir("./") {
         Ok(val) => val,
-        Err(err) => return err.to_string()
+        Err(err) => return err.to_string(),
     };
 
     let mut modules = vec![];
 
-    for file in files {
-        if let Ok(f) = file {
-            if let Some(file_name) = f.file_name().clone().to_str() {
-                if file_name.contains(".wasm") {
-                    modules.push(file_name.to_string());
-                }
+    for file in files.flatten() {
+        if let Some(file_name) = file.file_name().clone().to_str() {
+            if file_name.contains(".wasm") {
+                modules.push(file_name.to_string());
             }
         }
     }
 
+    let engine = Engine::default();
     for module in modules {
+        let mut linker = Linker::new(&engine);
 
-        let mut store = Store::default();
-        let wasm_bytes = fs::read(module).unwrap();
-        let module = Module::new(&store, wasm_bytes).unwrap();
-        for export in module.exports() {
-            println!("{:?}", export);
+        let wasi = WasiCtxBuilder::new()
+            .inherit_stdio()
+            .inherit_args()
+            .unwrap()
+            .build();
+        let mut store = Store::new(&engine, wasi);
+        // let add = Func::wrap(&mut store, |str: String, mut caller: Caller<'_, String>, a: i32, b: i32| { a + b });
+
+
+        linker.func_wrap("env", "log_str", log_str).unwrap();
+        linker.func_wrap("env", "set_str", set_str).unwrap();
+
+
+        wasmtime_wasi::add_to_linker(&mut linker, |s| s).unwrap();
+
+
+        let module = Module::from_file(&engine, module).unwrap();
+        for import in module.imports() {
+            println!("{:?}", import);
         }
-
-        let wasi_env = WasiState::new("command-name").finalize(&mut store).unwrap();
-
-        let version = get_wasi_version(&module, true).unwrap();
-        let imports = generate_import_object_from_env(&mut store, &wasi_env.env, version);
-        let instance = Instance::new(&mut store, &module, &imports).unwrap();
-
-        let mem = instance.context_mut().memory(0).allocate(8);
+        let instance = linker.instantiate(&mut store, &module).unwrap();
+        let alloc = instance
+            .get_typed_func::<(), ()>(&mut store, "alloc")
+            .unwrap();
+        alloc.call(&mut store, ()).unwrap();
 
 
+        let memory = instance.get_memory(&mut store, "memory").unwrap();
+        memory.write(&mut store, 0, "Hello, World!".as_bytes()).unwrap();
 
+        let dealloc = instance
+            .get_typed_func::<(), ()>(&mut store, "dealloc")
+            .unwrap();
 
-        // let module = Module::from_file(&engine, module.as_str()).unwrap();
-        //
-        //
-        // let mut linker = Linker::new(&engine);
-        // let wasi = WasiCtxBuilder::new()
-        //     .inherit_stdio()
-        //     .inherit_args().unwrap()
-        //     .build();
-        // let mut store = Store::new(&engine, wasi);
-        // wasmtime_wasi::add_to_linker(&mut linker, |s| s).unwrap();
-        // let link = linker.instantiate(&mut store, &module).unwrap();
-        // let memory = link.get_memory(&mut store, "memory").unwrap();
-        //
-        // let buf = memory.data_ptr(&mut store);
-        //
-        // memory.write(&mut store, 256, b"389weyfw").unwrap();
-        // let change = link.get_typed_func::<*mut u8, ()>(&mut store, "change_counters").unwrap();
-        // change.call(&mut store, buf).unwrap();
-
-
-
-
-        // let alloc = instance.get_typed_func::<(), &u8>(&mut store, "alloc").unwrap();
-        // let alloc = instance.get_func(&mut store, "alloc").ok_or(Err("Something"))?.get2::<i32, i32>()?;
-        // let alloc = link.get_typed_func::<(), ()>(&mut store, "alloc").unwrap();
-        // alloc.call(&mut store, ()).unwrap();
-
-
-        // let buf = alloc.call(&mut store, &[], &mut []).unwrap();
-
-
-
-
-        // for export in module.exports() {
-        //     println!("{:?}", export);
-        // }
-        // let memory = link.get_memory(&store, "memory").unwrap();
-        // let alloc_fn = link.get_func(&store, "alloc").unwrap();
-        // let alloc_fn = link.get_typed_func::<(), >(&mut store, "alloc").unwrap();
-        // let buf = alloc_fn.call(store, ()).unwrap();
-        // memory.write(&store, memory.data_size(&store), &buf).unwrap();
-        // let add_fn = link.get_typed_func::<*mut, String>(&mut store, "change_counters").unwrap();
-        // response.push_str(format!("Counter: {}", add_fn.call(store, ().unwrap()).as_str());
-        // println!("{:?}", add_fn.call(store, (1, 1, 2)).unwrap());
+        dealloc.call(&mut store, ()).unwrap();
+        let data = memory
+            .data(&store)
+            .get(0 as u32 as usize..)
+            .and_then(|arr| arr.get(..1024 as u32 as usize));
+        let string = match data {
+            Some(data) => match std::str::from_utf8(data) {
+                Ok(s) => s,
+                Err(_) => return String::from("Error"),
+            },
+            None => return String::from("Error"),
+        };
+        println!("{}", string);
     }
 
-    // for module in modules {
-    //
-    // }
-    return response;
-    // return Err(());
 
+
+    return String::from("OK");
 }
 
 #[main]
