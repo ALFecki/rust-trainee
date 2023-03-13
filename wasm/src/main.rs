@@ -1,14 +1,18 @@
 use std::collections::HashMap;
 use std::ffi::{c_void, CStr};
 use std::mem;
+use std::ptr::null_mut;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 
+static mut MEMORY_POINTER: *mut u8 = null_mut();
+static mut MEMORY_SIZE: usize = 0;
 
 extern "C" {
     fn log_str(ptr: i32, len: i32);
     fn set_str(ptr: i32);
+    fn deallocate(size: i32);
 }
 
 #[derive(Default, Serialize)]
@@ -49,16 +53,18 @@ struct CustomAdd {
 
 
 #[no_mangle]
-pub unsafe extern "C" fn alloc() {
-    let mut buf = Vec::with_capacity(1024);
-    let ptr: *mut c_void = buf.as_mut_ptr();
-    // log_str(ptr as i32, 1024);
-    // mem::forget(buf);
+pub unsafe extern "C" fn alloc(size: i32) -> *mut u8 {
+    let mut buf = Vec::with_capacity(size as usize);
+    let ptr = buf.as_mut_ptr();
+    MEMORY_POINTER = ptr;
+    MEMORY_SIZE = size as usize;
+    std::mem::forget(buf);
+    ptr
 }
 
-pub unsafe extern "C"  fn dealloc(ptr: *mut u8) {
-
-    let data = Vec::from_raw_parts(ptr , 0, 1024);
+#[no_mangle]
+pub unsafe extern "C"  fn dealloc() {
+    let data = Vec::from_raw_parts(MEMORY_POINTER, MEMORY_SIZE, MEMORY_SIZE);
     std::mem::drop(data);
 }
 
@@ -68,12 +74,22 @@ pub unsafe extern "C" fn change_counters(ptr: *mut u8) {
     println!("{}", query);
 }
 
-
-
-
-
 fn main() {
-    // let a = alloc();
-    // unsafe { dealloc(a); }
+
+    unsafe {
+        change_counters(MEMORY_POINTER);
+        let query = String::from_raw_parts(MEMORY_POINTER, MEMORY_SIZE, MEMORY_SIZE)
+            .chars().take_while(|c| *c != '\0').collect::<String>();
+
+        println!("{string}");
+    }
+
+
+
+    unsafe { dealloc(); }
+    println!("Deallocated");
+    // log_str(memory as i32, size);
+
+
 
 }
