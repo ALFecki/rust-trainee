@@ -13,12 +13,13 @@ use std::ptr::null;
 
 use actix_web::error::ContentTypeError::{ParseError, UnknownEncoding};
 use actix_web::error::ReadlinesError::ContentTypeError;
+use actix_web::http::StatusCode;
 use anyhow::Error;
 use mime::Mime;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-use actix_web::http::StatusCode;
 use tokio::sync::Mutex;
+use wasm_bindgen::JsValue;
 use wasmtime::{Caller, Engine, Extern, Func, Linker, Memory, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
@@ -144,49 +145,6 @@ async fn counter_delete(counters: Data<Counters>) -> impl Responder {
     HttpResponse::Ok().body(format!("Counter reset, delete counter is {}", temp))
 }
 
-fn log_str(mut caller: Caller<'_, WasiCtx>, ptr: i32, len: i32) -> Result<(), Error> {
-    let mem = match caller.get_export("memory") {
-        Some(Extern::Memory(mem)) => mem,
-        _ => anyhow::bail!("failed to find host memory"),
-    };
-
-    let data = mem
-        .data(&caller)
-        .get(ptr as u32 as usize..)
-        .and_then(|arr| arr.get(..len as u32 as usize));
-    let string = match data {
-        Some(data) => match std::str::from_utf8(data) {
-            Ok(s) => s,
-            Err(_) => anyhow::bail!("invalid utf-8"),
-        },
-        None => anyhow::bail!("pointer/length out of bounds"),
-    };
-    println!("{}", string);
-    Ok(())
-}
-
-fn set_str(mut caller: Caller<'_, WasiCtx>, ptr: i32, len: i32) -> Result<(), Error> {
-    let mem = match caller.get_export("memory") {
-        Some(Extern::Memory(mem)) => mem,
-        _ => anyhow::bail!("failed to find host memory"),
-    };
-
-    mem.write(&mut caller, ptr as usize, "Hello, World!".as_bytes())
-        .unwrap();
-    Ok(())
-}
-
-fn deallocate(mut caller: Caller<'_, WasiCtx>, size: i32) -> Result<(), Error> {
-    let mem = match caller.get_export("memory") {
-        Some(Extern::Memory(mem)) => mem,
-        _ => anyhow::bail!("failed to find host memory"),
-    };
-    let data =
-        unsafe { Vec::from_raw_parts(mem.data_ptr(&mut caller), size as usize, size as usize) };
-    std::mem::drop(data);
-    Ok(())
-}
-
 #[derive(Serialize, Deserialize)]
 struct CalcParams {
     first: f64,
@@ -210,14 +168,25 @@ fn print_memory(store: &Store<WasiCtx>, memory: &Memory, ptr: i32, len: i32) {
 }
 
 #[get("/")]
-async fn index(req: HttpRequest) -> impl Responder {
-    let mut query = req.query_string();
-    let mem_size = query.len() + 10; // todo!
-
+async fn index(counters: Data<Counters>, req: HttpRequest) -> impl Responder {
+    let query = req.query_string();
+    let mutex = counters.custom_counters.clone();
+    let mut custom_counters_map = match serde_qs::to_string(&counters) {
+        Ok(data) => data,
+        Err(_) => String::new()
+    };
+    mutex.lock().await.insert("weoft".to_string(), AtomicU32::new(2));
+    if let Ok(val) = serde_json::to_string(&*mutex.lock().await) {
+        custom_counters_map.push_str(format!("&custom_counters={}", val).as_str());
+    }
+    let mem_size = query.len() + custom_counters_map.len() + 10;
+    println!("Memory size: {mem_size}");
 
     let files = match fs::read_dir("./") {
         Ok(val) => val,
-        Err(err) => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string()),
+        Err(err) => {
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+        }
     };
 
     let mut modules = vec![];
@@ -234,53 +203,68 @@ async fn index(req: HttpRequest) -> impl Responder {
     for module_name in modules {
         let mut linker = Linker::new(&engine);
 
-        let wasi = match WasiCtxBuilder::new()
-            .inherit_stdio()
-            .inherit_args() {
+        let wasi = match WasiCtxBuilder::new().inherit_stdio().inherit_args() {
             Ok(builder) => builder.build(),
-            Err(err) => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+            Err(err) => {
+                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+            }
         };
 
         let mut store = Store::new(&engine, wasi);
 
-        // linker.func_wrap("env", "log_str", log_str).unwrap();
-        // linker.func_wrap("env", "set_str", set_str).unwrap();
-        // linker.func_wrap("env", "deallocate", deallocate).unwrap();
-
         if let Err(err) = wasmtime_wasi::add_to_linker(&mut linker, |s| s) {
-            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string());
         }
         let module = match Module::from_file(&engine, module_name) {
             Ok(m) => m,
-            Err(err) => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+            Err(err) => {
+                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+            }
         };
         let instance = match linker.instantiate(&mut store, &module) {
             Ok(inst) => inst,
-            Err(err) => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+            Err(err) => {
+                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+            }
         };
         let memory = match instance.get_memory(&mut store, "memory") {
             Some(mem) => mem,
-            None => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body("Memory error!")
+            None => {
+                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body("Memory error!")
+            }
         };
 
         if let Ok(alloc) = instance.get_typed_func::<i32, i32>(&mut store, "alloc") {
             let ptr = match alloc.call(&mut store, mem_size as i32) {
                 Ok(offset) => offset,
-                Err(err) => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+                Err(err) => {
+                    return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(err.to_string())
+                }
             };
             if let Err(err) = memory.write(&mut store, ptr as usize, query.as_bytes()) {
-                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string());
+                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(err.to_string());
             }
+            if let Err(err) =
+                memory.write(&mut store, ptr as usize + query.len() + 1, custom_counters_map.as_bytes())
+            {
+                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(err.to_string());
+            }
+            print_memory(&store, &memory, ptr, mem_size as i32);
         }
 
+
         if let Ok(main) = instance.get_typed_func::<(i32, i32), i32>(&mut store, "main") {
-            if let Err(err) = main.call(&mut store, (0,0)) {
-                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string());
+            if let Err(err) = main.call(&mut store, (0, 0)) {
+                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(err.to_string());
             }
         }
     }
 
-    return HttpResponse::build(StatusCode::OK).body("Completed");
+    HttpResponse::build(StatusCode::OK).body("Completed")
 }
 
 #[main]
