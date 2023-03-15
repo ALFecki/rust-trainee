@@ -25,11 +25,11 @@ use wasm_bindgen::JsValue;
 use wasmtime::{Caller, Engine, Extern, Func, Linker, Memory, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
-#[derive(Default, Serialize, Debug)]
+#[derive(Default, Serialize, Deserialize, Debug)]
 struct Counters {
     counter: AtomicU32,
     delete_counter: AtomicU32,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     custom_counters: Arc<Mutex<HashMap<String, AtomicU32>>>,
 }
 
@@ -173,9 +173,10 @@ fn print_memory(store: &Store<WasiCtx>, memory: &Memory, ptr: i32, len: i32) {
 }
 
 #[get("/")]
-async fn index(counters: Data<Counters>, req: HttpRequest) -> impl Responder {
+async fn index(mut counters: Data<Counters>, req: HttpRequest) -> impl Responder {
     let query = req.query_string();
     let mutex = counters.custom_counters.clone();
+    print!("Counters before changing: {counters:?}");
     let mut custom_counters_map = match serde_json::to_string(&counters) {
         Ok(data) => data,
         Err(_) => String::new(),
@@ -227,6 +228,10 @@ async fn index(counters: Data<Counters>, req: HttpRequest) -> impl Responder {
                 return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
             }
         };
+
+        for export in module.exports() {
+            println!("{export:?}");
+        }
         // linker.func_wrap("env", "get_result", get_result).unwrap();
         let instance = match linker.instantiate(&mut store, &module) {
             Ok(inst) => inst,
@@ -270,21 +275,24 @@ async fn index(counters: Data<Counters>, req: HttpRequest) -> impl Responder {
             let new_ptr = load_data.call(&mut store, ()).unwrap();
             println!("After loading data");
 
-            let mut  vec= vec![0; mem_size - 20];
-
-            print_memory(&store, &memory, new_ptr, mem_size as i32 - 20);
+            let mut  vec= vec![0; mem_size - query.len() - custom_counters_map.len()];
 
             memory.read(&mut store, new_ptr as usize, vec.as_mut_slice()).unwrap();
+            vec = vec.into_iter().take_while(|u| *u != '\0' as u8).collect::<Vec<u8>>();
             println!("Response data: {vec:?}");
             let response_data = String::from_utf8(vec).unwrap();
-            let mut response = String::new();
-            for res_iter in response_data.chars() {
-                if res_iter == '\0' {
-                    break;
-                }
-                response.push(res_iter as char);
+            let response = response_data.split(';').collect::<Vec<&str>>();
+
+            let mut new_counters = serde_json::from_str::<Counters>(response[0]).unwrap();
+            let map = serde_json::from_str::<HashMap<String, AtomicU32>>(response[1]).unwrap();
+            println!("{map:?}");
+            counters.counter.swap(new_counters.counter.load(Ordering::SeqCst), Ordering::SeqCst);
+            let mut old_map = mutex.lock().await;
+            // let a = map.into_iter().map(|(k, v)| old_map.insert(k, v));
+            for (k, v) in map {
+                old_map.insert(k, v);
             }
-            println!("{response}");
+            // println!("{response}");
 
         }
 
@@ -294,6 +302,7 @@ async fn index(counters: Data<Counters>, req: HttpRequest) -> impl Responder {
                     .body(err.to_string());
             }
         }
+        println!("Counters after changing: {counters:?}");
     }
 
     HttpResponse::build(StatusCode::OK).body("Completed")
