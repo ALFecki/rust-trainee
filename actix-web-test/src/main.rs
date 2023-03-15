@@ -9,6 +9,8 @@ use actix_web::{delete, get, main, App, HttpRequest, HttpResponse, HttpServer, R
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::ops::Deref;
+
 use std::ptr::null;
 
 use actix_web::error::ContentTypeError::{ParseError, UnknownEncoding};
@@ -153,33 +155,37 @@ struct CalcParams {
 }
 
 fn print_memory(store: &Store<WasiCtx>, memory: &Memory, ptr: i32, len: i32) {
+    println!("Memory pointer in print memory: {}", ptr as u32 as usize);
     let data = memory
         .data(store)
         .get(ptr as u32 as usize..)
         .and_then(|arr| arr.get(..len as u32 as usize));
+
+    println!("Data from memory: {:?}", data);
     let string = match data {
         Some(data) => match std::str::from_utf8(data) {
+            Err(err) => { println!("Parsing string error: {}", err.to_string()); return; },
             Ok(s) => s,
-            Err(_) => return,
         },
-        None => return,
+        None => { println!("Data is empty!"); return; },
     };
-    println!("{}", string);
+    println!("Memory check: {}", string);
 }
 
 #[get("/")]
 async fn index(counters: Data<Counters>, req: HttpRequest) -> impl Responder {
     let query = req.query_string();
     let mutex = counters.custom_counters.clone();
-    let mut custom_counters_map = match serde_qs::to_string(&counters) {
+    let mut custom_counters_map = match serde_json::to_string(&counters) {
         Ok(data) => data,
-        Err(_) => String::new()
+        Err(_) => String::new(),
     };
-    mutex.lock().await.insert("weoft".to_string(), AtomicU32::new(2));
     if let Ok(val) = serde_json::to_string(&*mutex.lock().await) {
-        custom_counters_map.push_str(format!("&custom_counters={}", val).as_str());
+        custom_counters_map.pop();
+        custom_counters_map.push_str(format!(", \"custom_counters\":{}", val).as_str());
+        custom_counters_map.push('}');
     }
-    let mem_size = query.len() + custom_counters_map.len() + 10;
+    let mem_size = (query.len() + custom_counters_map.len()) * 2;
     println!("Memory size: {mem_size}");
 
     let files = match fs::read_dir("./") {
@@ -221,6 +227,7 @@ async fn index(counters: Data<Counters>, req: HttpRequest) -> impl Responder {
                 return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
             }
         };
+        // linker.func_wrap("env", "get_result", get_result).unwrap();
         let instance = match linker.instantiate(&mut store, &module) {
             Ok(inst) => inst,
             Err(err) => {
@@ -246,15 +253,40 @@ async fn index(counters: Data<Counters>, req: HttpRequest) -> impl Responder {
                 return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
                     .body(err.to_string());
             }
-            if let Err(err) =
-                memory.write(&mut store, ptr as usize + query.len() + 1, custom_counters_map.as_bytes())
-            {
+            if let Err(err) = memory.write(
+                &mut store,
+                ptr as usize + query.len() + 1,
+                custom_counters_map.as_bytes(),
+            ) {
                 return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
                     .body(err.to_string());
             }
-            print_memory(&store, &memory, ptr, mem_size as i32);
-        }
 
+            print_memory(&store, &memory, ptr, mem_size as i32);
+
+            let load_data = instance
+                .get_typed_func::<(), i32>(&mut store, "load_data_to_wasm")
+                .unwrap();
+            let new_ptr = load_data.call(&mut store, ()).unwrap();
+            println!("After loading data");
+
+            let mut  vec= vec![0; mem_size - 20];
+
+            print_memory(&store, &memory, new_ptr, mem_size as i32 - 20);
+
+            memory.read(&mut store, new_ptr as usize, vec.as_mut_slice()).unwrap();
+            println!("Response data: {vec:?}");
+            let response_data = String::from_utf8(vec).unwrap();
+            let mut response = String::new();
+            for res_iter in response_data.chars() {
+                if res_iter == '\0' {
+                    break;
+                }
+                response.push(res_iter as char);
+            }
+            println!("{response}");
+
+        }
 
         if let Ok(main) = instance.get_typed_func::<(i32, i32), i32>(&mut store, "main") {
             if let Err(err) = main.call(&mut store, (0, 0)) {

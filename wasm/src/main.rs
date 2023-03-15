@@ -10,11 +10,6 @@ use serde_with::{serde_as, DisplayFromStr};
 static mut MEMORY_POINTER: *mut u8 = null_mut();
 static mut MEMORY_SIZE: usize = 0;
 
-extern "C" {
-    fn log_str(ptr: i32, len: i32);
-    fn set_str(ptr: i32);
-    fn deallocate(size: i32);
-}
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Counters {
@@ -44,6 +39,7 @@ pub unsafe extern "C" fn alloc(size: i32) -> *mut u8 {
     MEMORY_POINTER = ptr;
     MEMORY_SIZE = size as usize;
     std::mem::forget(buf);
+    println!("Memory pointer at alloc {:?}", MEMORY_POINTER);
     ptr
 }
 
@@ -52,12 +48,6 @@ pub unsafe extern "C" fn dealloc() {
     let data = Vec::from_raw_parts(MEMORY_POINTER, MEMORY_SIZE, MEMORY_SIZE);
     std::mem::drop(data);
 }
-
-// #[no_mangle]
-// pub unsafe extern "C" fn change_counters(ptr: *mut u8) {
-//     let query = CStr::from_ptr(ptr as *const i8).to_str().unwrap();
-//     println!("{}", query);
-// }
 
 pub extern "C" fn change_counters(incr: &AtomicU32, to_swap: &AtomicU32, to_add: u32) -> u32 {
     to_swap.swap(0, Ordering::SeqCst);
@@ -82,6 +72,8 @@ pub extern "C" fn custom_counter(
         name.push_str(&params.m);
         name.push_str(&params.e);
 
+        println!("Counter name: {name}");
+
         map.entry(name.clone())
             .and_modify(|c| {
                 c.fetch_add(to_add, Ordering::SeqCst);
@@ -93,27 +85,66 @@ pub extern "C" fn custom_counter(
     counters
 }
 
-fn main() {
-    unsafe {
-        let req =  String::from_raw_parts(MEMORY_POINTER, MEMORY_SIZE, MEMORY_SIZE);
-        let query = req
+#[no_mangle]
+pub unsafe extern "C" fn load_data_to_wasm() -> *mut u8 {
+    let req =  String::from_raw_parts(MEMORY_POINTER, MEMORY_SIZE, MEMORY_SIZE);
+    let query = req
+        .chars()
+        .take_while(|c| *c != '\0')
+        .collect::<String>();
+    let custom_counters =
+        req.get_unchecked(query.len() + 1..)
             .chars()
             .take_while(|c| *c != '\0')
             .collect::<String>();
-        // println!("TEST!!!!!!!!!!! {}", String::from_raw_parts(MEMORY_POINTER.add(query.len() + 1), MEMORY_SIZE, MEMORY_SIZE));
-        let custom_counters =
-            req.get_unchecked(query.len() + 1..)
-                .chars()
-                .take_while(|c| *c != '\0')
-                .collect::<String>();
 
-        println!("Query: {query}, Custom_counters: {custom_counters}");
+    println!("Query: {query}, Custom_counters: {custom_counters}");
 
-        custom_counter(
-            serde_qs::from_str::<Counters>(&custom_counters).unwrap(),
-            serde_qs::from_str::<CustomCounterQuery>(&query).ok(),
-            serde_qs::from_str::<CustomAdd>(&query).ok(),
-        );
+    let editted = custom_counter(
+        serde_json::from_str::<Counters>(&custom_counters).unwrap(),
+        serde_qs::from_str::<CustomCounterQuery>(&query).ok(),
+        serde_qs::from_str::<CustomAdd>(&query).ok(),
+    );
+
+    let response = serde_json::to_string(&editted).unwrap();
+
+    // MEMORY_POINTER = MEMORY_POINTER.add(req.len());
+    let mut memory = Vec::from_raw_parts(MEMORY_POINTER, MEMORY_SIZE, MEMORY_SIZE);
+    println!("Memory from raw parts: {:?}", memory);
+    for mut ch in &mut memory {
+        *ch = '\0' as u8;
+    }
+
+    println!("Memory from raw parts after cleaning: {:?}", memory);
+    let mut iter = response.chars().into_iter();
+    for i in 8..MEMORY_SIZE {
+        if let Some(char) = iter.next() {
+            memory[i] = char as u8;
+        } else {
+            break;
+        }
+    }
+    // println!("Memory pointer at load_data {:?}", memory.as_mut_ptr());
+
+    // println!("{:?}", memory);
+    // println!();
+    // for ch in memory {
+    //     print!("{}, ", *ch as char);
+    // }
+    memory.as_mut_ptr().add(8)
+    // let ptr = memory.as_mut_ptr();
+    // std::mem::forget(memory);
+    // memory = Vec::from_raw_parts(ptr, MEMORY_SIZE, MEMORY_SIZE);
+
+    // println!("{}", String::from_utf8(memory).unwrap());
+
+    // memory.as_mut_ptr()
+
+}
+
+fn main() {
+    unsafe {
+
     }
 
     unsafe {
