@@ -135,12 +135,9 @@ async fn new_index(counters: Data<Counters>, req: HttpRequest) -> impl Responder
 
     let query = req.query_string().to_string();
     let mut map_copy = HashMap::new();
-    for (k,v) in &*mutex {
+    for (k, v) in &*mutex {
         map_copy.insert((*k).clone(), v.load(Ordering::SeqCst));
     }
-        // let _ = (*mutex)
-        //     .into_iter()
-        //     .map(|(k, v)| map_copy.insert(k.as_str().to_string(), v.load(Ordering::SeqCst)));
 
     let request = match serde_json::to_string(&CountersDto {
         counter: counters.counter.load(Ordering::SeqCst),
@@ -213,28 +210,28 @@ async fn new_index(counters: Data<Counters>, req: HttpRequest) -> impl Responder
         let buffer_for_result: Arc<parking_lot::Mutex<Vec<u8>>> =
             Arc::new(parking_lot::Mutex::new(vec![]));
         let buf_clone = buffer_for_result.clone();
-        linker
-            .func_wrap(
-                "env",
-                "get_output",
-                move |mut caller: Caller<'_, WasiCtx>, ptr: i32, len: i32| {
-                    let mem = match caller.get_export("memory") {
-                        Some(Extern::Memory(mem)) => mem,
-                        _ => anyhow::bail!("Failed to find memory"),
-                    };
-                    let offset = ptr as u32 as usize;
-                    let mut buffer: Vec<u8> = vec![0; len as usize];
-                    if let Err(err) = mem.read(&mut caller, offset, &mut buffer) {
-                        anyhow::bail!("Memory access error: {}", err.to_string())
-                    }
-                    let mut buf = buf_clone.lock();
-                    if let Err(err) = buf.write_all(&buffer) {
-                        anyhow::bail!("Error reading output: {}", err.to_string())
-                    }
-                    Ok(())
-                },
-            )
-            .unwrap();
+        if let Err(err) = linker.func_wrap(
+            "env",
+            "get_output",
+            move |mut caller: Caller<'_, WasiCtx>, ptr: i32, len: i32| {
+                let mem = match caller.get_export("memory") {
+                    Some(Extern::Memory(mem)) => mem,
+                    _ => anyhow::bail!("Failed to find memory"),
+                };
+                let offset = ptr as u32 as usize;
+                let mut buffer: Vec<u8> = vec![0; len as usize];
+                if let Err(err) = mem.read(&mut caller, offset, &mut buffer) {
+                    anyhow::bail!("Memory access error: {}", err.to_string())
+                }
+                let mut buf = buf_clone.lock();
+                if let Err(err) = buf.write_all(&buffer) {
+                    anyhow::bail!("Error reading output: {}", err.to_string())
+                }
+                Ok(())
+            },
+        ) {
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string());
+        }
 
         if let Err(err) = wasmtime_wasi::add_to_linker(&mut linker, |s| s) {
             return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string());
@@ -245,10 +242,6 @@ async fn new_index(counters: Data<Counters>, req: HttpRequest) -> impl Responder
                 return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
             }
         };
-
-        for export in module.exports() {
-            println!("{export:?}");
-        }
         let instance = match linker.instantiate(&mut store, &module) {
             Ok(inst) => inst,
             Err(err) => {
@@ -258,7 +251,8 @@ async fn new_index(counters: Data<Counters>, req: HttpRequest) -> impl Responder
 
         if let Ok(start) = instance.get_typed_func::<(), ()>(&mut store, "_start") {
             if let Err(err) = start.call(&mut store, ()) {
-                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string());
+                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(err.to_string());
             }
         }
 
@@ -268,20 +262,24 @@ async fn new_index(counters: Data<Counters>, req: HttpRequest) -> impl Responder
         );
         let result = match String::from_utf8((*buffer_for_result.lock()).clone()) {
             Ok(val) => val,
-            Err(err) => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+            Err(err) => {
+                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+            }
         };
-        let deserialized_result = match serde_json::from_str::<CountersDto>(result.as_str()) {
-            Ok(val) => val,
-            Err(err) => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+        if let Ok(deserialized_result) = serde_json::from_str::<CountersDto>(result.as_str()) {
+            counters
+                .counter
+                .store(deserialized_result.counter, Ordering::SeqCst);
+            counters
+                .delete_counter
+                .store(deserialized_result.delete_counter, Ordering::SeqCst);
+            for (k, v) in deserialized_result.custom_counters {
+                mutex.insert(k, AtomicU32::new(v));
+            }
+            println!("{:?}", mutex);
         };
-        counters.counter.store(deserialized_result.counter, Ordering::SeqCst);
-        counters.delete_counter.store(deserialized_result.delete_counter, Ordering::SeqCst);
-        // mutex.clear();
-        for (k, v) in deserialized_result.custom_counters {
-            mutex.insert(k, AtomicU32::new(v));
-        }
-        // let _ = deserialized_result.custom_counters.into_iter().map(|(k, v)| mutex.insert(k, AtomicU32::new(v)));
-        println!("{:?}", mutex);
+
+        // other modules results
     }
     HttpResponse::build(StatusCode::OK).body("Request done!")
 }

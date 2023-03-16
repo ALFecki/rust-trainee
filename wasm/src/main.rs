@@ -100,6 +100,7 @@ fn main() -> anyhow::Result<()> {
         Ok(out) => out,
         Err(err) => anyhow::bail!("Error serializing output: {}", err.to_string()),
     };
+
     unsafe { get_output(output.as_ptr() as i32, output.len() as i32); }
     println!("{:?}", output);
     unsafe { dealloc(ptr, mem_size) };
