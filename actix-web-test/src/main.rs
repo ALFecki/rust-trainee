@@ -4,25 +4,20 @@ mod xml;
 use crate::utilities::{change_counters, get_accept_header};
 use crate::xml::Xml;
 use actix_web::body::EitherBody;
-use actix_web::web::{Data, Json, Query};
-use actix_web::{delete, get, main, App, HttpRequest, HttpResponse, HttpServer, Responder};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fs;
-use std::ops::Deref;
-
-use std::ptr::null;
-
 use actix_web::error::ContentTypeError::{ParseError, UnknownEncoding};
 use actix_web::error::ReadlinesError::ContentTypeError;
 use actix_web::http::StatusCode;
-use anyhow::Error;
+use actix_web::web::{Data, Json, Query};
+use actix_web::{delete, get, main, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use mime::Mime;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs;
+use std::io::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use wasm_bindgen::JsValue;
-use wasmtime::{Caller, Engine, Extern, Func, Linker, Memory, Module, Store};
+use wasmtime::{Caller, Engine, Extern, Linker, Memory, MemoryType, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
 #[derive(Default, Serialize, Deserialize, Debug)]
@@ -33,6 +28,13 @@ struct Counters {
     custom_counters: Arc<Mutex<HashMap<String, AtomicU32>>>,
 }
 
+#[derive(Default, Serialize, Deserialize, Debug)]
+struct CountersDto {
+    counter: u32,
+    delete_counter: u32,
+    custom_counters: HashMap<String, u32>,
+}
+
 #[derive(Deserialize, Debug)]
 struct CustomCounterQuery {
     n: String,
@@ -41,39 +43,11 @@ struct CustomCounterQuery {
     e: String,
 }
 
-impl ToString for CustomCounterQuery {
-    fn to_string(&self) -> String {
-        let mut res = String::new();
-        res.push_str(self.n.as_str());
-        res.push_str(self.a.as_str());
-        res.push_str(self.m.as_str());
-        res.push_str(self.e.as_str());
-        // if let Some(val) = self.counter {
-        //     res.push_str(val.to_string().as_str());
-        // }
-        return res;
-    }
-}
-
 struct ContentTypeResponse<T>
 where
     T: Serialize,
 {
     data: T,
-}
-
-impl<T> ContentTypeResponse<T>
-where
-    T: Serialize,
-{
-    fn get_content_type(&self, req: &HttpRequest) -> Result<Mime, &str> {
-        if let Some(accept) = get_accept_header(req) {
-            if let Ok(mime) = accept.parse::<Mime>() {
-                return Ok(mime);
-            }
-        }
-        Err("Mime is shit")
-    }
 }
 
 impl<T> Responder for ContentTypeResponse<T>
@@ -154,41 +128,30 @@ struct CalcParams {
     operation: char,
 }
 
-fn print_memory(store: &Store<WasiCtx>, memory: &Memory, ptr: i32, len: i32) {
-    println!("Memory pointer in print memory: {}", ptr as u32 as usize);
-    let data = memory
-        .data(store)
-        .get(ptr as u32 as usize..)
-        .and_then(|arr| arr.get(..len as u32 as usize));
-
-    println!("Data from memory: {:?}", data);
-    let string = match data {
-        Some(data) => match std::str::from_utf8(data) {
-            Err(err) => { println!("Parsing string error: {}", err.to_string()); return; },
-            Ok(s) => s,
-        },
-        None => { println!("Data is empty!"); return; },
-    };
-    println!("Memory check: {}", string);
-}
-
 #[get("/")]
-async fn index(mut counters: Data<Counters>, req: HttpRequest) -> impl Responder {
-    let query = req.query_string();
-    let mutex = counters.custom_counters.clone();
-    print!("Counters before changing: {counters:?}");
-    let mut custom_counters_map = match serde_json::to_string(&counters) {
-        Ok(data) => data,
-        Err(_) => String::new(),
-    };
-    if let Ok(val) = serde_json::to_string(&*mutex.lock().await) {
-        custom_counters_map.pop();
-        custom_counters_map.push_str(format!(", \"custom_counters\":{}", val).as_str());
-        custom_counters_map.push('}');
-    }
-    let mem_size = (query.len() + custom_counters_map.len()) * 2;
-    println!("Memory size: {mem_size}");
+async fn new_index(counters: Data<Counters>, req: HttpRequest) -> impl Responder {
+    let custom_counters = counters.custom_counters.clone();
+    let mut mutex = custom_counters.lock().await;
 
+    let query = req.query_string().to_string();
+    let mut map_copy = HashMap::new();
+    for (k,v) in &*mutex {
+        map_copy.insert((*k).clone(), v.load(Ordering::SeqCst));
+    }
+        // let _ = (*mutex)
+        //     .into_iter()
+        //     .map(|(k, v)| map_copy.insert(k.as_str().to_string(), v.load(Ordering::SeqCst)));
+
+    let request = match serde_json::to_string(&CountersDto {
+        counter: counters.counter.load(Ordering::SeqCst),
+        delete_counter: counters.delete_counter.load(Ordering::SeqCst),
+        custom_counters: map_copy,
+    }) {
+        Ok(ser_res) => query + "\0" + &ser_res,
+        Err(err) => {
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+        }
+    };
     let files = match fs::read_dir("./") {
         Ok(val) => val,
         Err(err) => {
@@ -197,7 +160,6 @@ async fn index(mut counters: Data<Counters>, req: HttpRequest) -> impl Responder
     };
 
     let mut modules = vec![];
-
     for file in files.flatten() {
         if let Some(file_name) = file.file_name().clone().to_str() {
             if file_name.contains(".wasm") {
@@ -209,6 +171,8 @@ async fn index(mut counters: Data<Counters>, req: HttpRequest) -> impl Responder
     let engine = Engine::default();
     for module_name in modules {
         let mut linker = Linker::new(&engine);
+        let input = request.as_bytes().to_vec();
+        let input_size = input.len() as i32;
 
         let wasi = match WasiCtxBuilder::new().inherit_stdio().inherit_args() {
             Ok(builder) => builder.build(),
@@ -218,6 +182,59 @@ async fn index(mut counters: Data<Counters>, req: HttpRequest) -> impl Responder
         };
 
         let mut store = Store::new(&engine, wasi);
+        let memory_type = MemoryType::new(1, None);
+        if let Err(err) = Memory::new(&mut store, memory_type) {
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string());
+        }
+
+        if let Err(err) = linker.func_wrap("env", "get_input_size", move || -> i32 { input_size }) {
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string());
+        }
+
+        if let Err(err) = linker.func_wrap(
+            "env",
+            "set_input",
+            move |mut caller: Caller<'_, WasiCtx>, ptr: i32| {
+                let mem = match caller.get_export("memory") {
+                    Some(Extern::Memory(mem)) => mem,
+                    _ => anyhow::bail!("Failed to find memory"),
+                };
+                let offset = ptr as u32 as usize;
+                match mem.write(&mut caller, offset, &input) {
+                    Ok(_) => {}
+                    _ => anyhow::bail!("Failed to write memory"),
+                };
+                Ok(())
+            },
+        ) {
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string());
+        }
+
+        let buffer_for_result: Arc<parking_lot::Mutex<Vec<u8>>> =
+            Arc::new(parking_lot::Mutex::new(vec![]));
+        let buf_clone = buffer_for_result.clone();
+        linker
+            .func_wrap(
+                "env",
+                "get_output",
+                move |mut caller: Caller<'_, WasiCtx>, ptr: i32, len: i32| {
+                    let mem = match caller.get_export("memory") {
+                        Some(Extern::Memory(mem)) => mem,
+                        _ => anyhow::bail!("Failed to find memory"),
+                    };
+                    let offset = ptr as u32 as usize;
+                    let mut buffer: Vec<u8> = vec![0; len as usize];
+                    if let Err(err) = mem.read(&mut caller, offset, &mut buffer) {
+                        anyhow::bail!("Memory access error: {}", err.to_string())
+                    }
+                    let mut buf = buf_clone.lock();
+                    if let Err(err) = buf.write_all(&buffer) {
+                        anyhow::bail!("Error reading output: {}", err.to_string())
+                    }
+                    Ok(())
+                },
+            )
+            .unwrap();
 
         if let Err(err) = wasmtime_wasi::add_to_linker(&mut linker, |s| s) {
             return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string());
@@ -232,80 +249,41 @@ async fn index(mut counters: Data<Counters>, req: HttpRequest) -> impl Responder
         for export in module.exports() {
             println!("{export:?}");
         }
-        // linker.func_wrap("env", "get_result", get_result).unwrap();
         let instance = match linker.instantiate(&mut store, &module) {
             Ok(inst) => inst,
             Err(err) => {
                 return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
             }
         };
-        let memory = match instance.get_memory(&mut store, "memory") {
-            Some(mem) => mem,
-            None => {
-                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body("Memory error!")
+
+        if let Ok(start) = instance.get_typed_func::<(), ()>(&mut store, "_start") {
+            if let Err(err) = start.call(&mut store, ()) {
+                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string());
             }
+        }
+
+        println!(
+            "Result is {:?}",
+            String::from_utf8((*buffer_for_result.lock()).clone())
+        );
+        let result = match String::from_utf8((*buffer_for_result.lock()).clone()) {
+            Ok(val) => val,
+            Err(err) => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
         };
-
-        if let Ok(alloc) = instance.get_typed_func::<i32, i32>(&mut store, "alloc") {
-            let ptr = match alloc.call(&mut store, mem_size as i32) {
-                Ok(offset) => offset,
-                Err(err) => {
-                    return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(err.to_string())
-                }
-            };
-            if let Err(err) = memory.write(&mut store, ptr as usize, query.as_bytes()) {
-                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(err.to_string());
-            }
-            if let Err(err) = memory.write(
-                &mut store,
-                ptr as usize + query.len() + 1,
-                custom_counters_map.as_bytes(),
-            ) {
-                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(err.to_string());
-            }
-
-            print_memory(&store, &memory, ptr, mem_size as i32);
-
-            let load_data = instance
-                .get_typed_func::<(), i32>(&mut store, "load_data_to_wasm")
-                .unwrap();
-            let new_ptr = load_data.call(&mut store, ()).unwrap();
-            println!("After loading data");
-
-            let mut  vec= vec![0; mem_size - query.len() - custom_counters_map.len()];
-
-            memory.read(&mut store, new_ptr as usize, vec.as_mut_slice()).unwrap();
-            vec = vec.into_iter().take_while(|u| *u != '\0' as u8).collect::<Vec<u8>>();
-            println!("Response data: {vec:?}");
-            let response_data = String::from_utf8(vec).unwrap();
-            let response = response_data.split(';').collect::<Vec<&str>>();
-
-            let mut new_counters = serde_json::from_str::<Counters>(response[0]).unwrap();
-            let map = serde_json::from_str::<HashMap<String, AtomicU32>>(response[1]).unwrap();
-            println!("{map:?}");
-            counters.counter.swap(new_counters.counter.load(Ordering::SeqCst), Ordering::SeqCst);
-            let mut old_map = mutex.lock().await;
-            // let a = map.into_iter().map(|(k, v)| old_map.insert(k, v));
-            for (k, v) in map {
-                old_map.insert(k, v);
-            }
-            // println!("{response}");
-
+        let deserialized_result = match serde_json::from_str::<CountersDto>(result.as_str()) {
+            Ok(val) => val,
+            Err(err) => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
+        };
+        counters.counter.store(deserialized_result.counter, Ordering::SeqCst);
+        counters.delete_counter.store(deserialized_result.delete_counter, Ordering::SeqCst);
+        // mutex.clear();
+        for (k, v) in deserialized_result.custom_counters {
+            mutex.insert(k, AtomicU32::new(v));
         }
-
-        if let Ok(main) = instance.get_typed_func::<(i32, i32), i32>(&mut store, "main") {
-            if let Err(err) = main.call(&mut store, (0, 0)) {
-                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(err.to_string());
-            }
-        }
-        println!("Counters after changing: {counters:?}");
+        // let _ = deserialized_result.custom_counters.into_iter().map(|(k, v)| mutex.insert(k, AtomicU32::new(v)));
+        println!("{:?}", mutex);
     }
-
-    HttpResponse::build(StatusCode::OK).body("Completed")
+    HttpResponse::build(StatusCode::OK).body("Request done!")
 }
 
 #[main]
@@ -317,7 +295,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(Data::clone(&counters))
             .service(counter_get)
             .service(counter_delete)
-            .service(index)
+            .service(new_index)
     })
     .bind(("127.0.0.1", 8080))?
     .run()

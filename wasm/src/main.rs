@@ -1,21 +1,17 @@
-use serde::{Deserialize, Deserializer, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::ffi::{c_void, CStr};
-use std::io::Write;
-use std::mem;
-use std::ptr::null_mut;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
 
-static mut MEMORY_POINTER: *mut u8 = null_mut();
-static mut MEMORY_SIZE: usize = 0;
+extern "C" {
+    fn get_input_size() -> i32;
+    fn set_input(ptr: i32);
+    fn get_output(ptr: i32, len: i32);
+}
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Counters {
     counter: AtomicU32,
     delete_counter: AtomicU32,
-    #[serde(skip_serializing)]
     custom_counters: HashMap<String, AtomicU32>,
 }
 
@@ -34,19 +30,16 @@ pub struct CustomAdd {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn alloc(size: i32) -> *mut u8 {
+pub extern "C" fn alloc(size: i32) -> *mut u8 {
     let mut buf = Vec::with_capacity(size as usize);
     let ptr = buf.as_mut_ptr();
-    MEMORY_POINTER = ptr;
-    MEMORY_SIZE = size as usize;
     std::mem::forget(buf);
-    println!("Memory pointer at alloc {:?}", MEMORY_POINTER);
     ptr
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn dealloc() {
-    let data = Vec::from_raw_parts(MEMORY_POINTER, MEMORY_SIZE, MEMORY_SIZE);
+pub unsafe extern "C" fn dealloc(ptr: *mut u8, size: i32) {
+    let data = Vec::from_raw_parts(ptr, size as usize, size as usize);
     std::mem::drop(data);
 }
 
@@ -66,14 +59,12 @@ pub extern "C" fn custom_counter(
     };
     if let Some(params) = query {
         let mut name = String::new();
-        let mut map = &mut counters.custom_counters;
+        let map = &mut counters.custom_counters;
 
         name.push_str(&params.n);
         name.push_str(&params.a);
         name.push_str(&params.m);
         name.push_str(&params.e);
-
-        println!("Counter name: {name}");
 
         map.entry(name.clone())
             .and_modify(|c| {
@@ -86,48 +77,31 @@ pub extern "C" fn custom_counter(
     counters
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn load_data_to_wasm() -> *mut u8 {
-    let req = String::from_raw_parts(MEMORY_POINTER, MEMORY_SIZE, MEMORY_SIZE);
-    let query = req.chars().take_while(|c| *c != '\0').collect::<String>();
-    let custom_counters = req
-        .get_unchecked(query.len() + 1..)
-        .chars()
-        .take_while(|c| *c != '\0')
-        .collect::<String>();
+fn main() -> anyhow::Result<()> {
+    let mem_size = unsafe { get_input_size() };
+    let ptr = alloc(mem_size);
 
-    println!("Query: {query}, Custom_counters: {custom_counters}");
+    let input_buf = unsafe {
+        set_input(ptr as i32);
+        String::from_raw_parts(ptr, mem_size as usize, mem_size as usize)
+    };
+    println!("Input buf: {}", input_buf);
 
-    let editted = custom_counter(
-        serde_json::from_str::<Counters>(&custom_counters).unwrap(),
-        serde_qs::from_str::<CustomCounterQuery>(&query).ok(),
-        serde_qs::from_str::<CustomAdd>(&query).ok(),
-    );
-
-    let response = serde_json::to_string(&editted).unwrap() + ";" + &serde_json::to_string(&editted.custom_counters).unwrap();
-
-    println!("Response len: {}, data: {response}", response.len());
-
-
-    let mut memory: Vec<u8> = vec![];
-    println!("Memory from raw parts: {:?}", memory);
-    memory.write(response.as_bytes()).unwrap();
-
-    println!("Memory after writing: {:?}", memory);
-
-    println!("Memory pointer at load_data {:?}", memory.as_mut_ptr());
-
-    let ptr = memory.as_mut_ptr();
-    std::mem::forget(memory);
-    ptr
-}
-
-fn main() {
-    unsafe {}
-
-    unsafe {
-        dealloc();
-    }
-    println!("Deallocated");
-    // log_str(memory as i32, size);
+    let input_buf = input_buf.split('\0').collect::<Vec<&str>>();
+    let edited = match serde_json::from_str::<Counters>(input_buf[1]) {
+        Ok(counters) => custom_counter(
+            counters,
+            serde_qs::from_str::<CustomCounterQuery>(input_buf[0]).ok(),
+            serde_qs::from_str::<CustomAdd>(input_buf[0]).ok(),
+        ),
+        Err(err) => anyhow::bail!("Error deserializing input in wasm: {}", err.to_string()),
+    };
+    let output = match serde_json::to_vec(&edited) {
+        Ok(out) => out,
+        Err(err) => anyhow::bail!("Error serializing output: {}", err.to_string()),
+    };
+    unsafe { get_output(output.as_ptr() as i32, output.len() as i32); }
+    println!("{:?}", output);
+    unsafe { dealloc(ptr, mem_size) };
+    Ok(())
 }
