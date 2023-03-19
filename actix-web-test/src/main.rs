@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
+use std::ops::Deref;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -75,7 +76,7 @@ where
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct CustomAdd {
     counter: u32,
 }
@@ -129,7 +130,7 @@ struct CalcParams {
 }
 
 #[get("/")]
-async fn new_index(counters: Data<Counters>, req: HttpRequest) -> impl Responder {
+async fn new_index(counters: Data<Counters>, calc_params: Option<Json<CalcParams>>, req: HttpRequest) -> impl Responder {
     let custom_counters = counters.custom_counters.clone();
     let mut mutex = custom_counters.lock().await;
 
@@ -144,7 +145,19 @@ async fn new_index(counters: Data<Counters>, req: HttpRequest) -> impl Responder
         delete_counter: counters.delete_counter.load(Ordering::SeqCst),
         custom_counters: map_copy,
     }) {
-        Ok(ser_res) => query + "\0" + &ser_res,
+        Ok(ser_res) => {
+            let mut result = String::new();
+            if !query.is_empty() {
+                result.push_str(format!("{query}\0").as_str());
+            }
+            result += &ser_res;
+            if let Some(calc) = calc_params {
+                if let Ok(calc) = serde_json::to_string(calc.deref()) {
+                    result.push_str(format!("\0{}", calc).as_str())
+                }
+            }
+            result
+        },
         Err(err) => {
             return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
         }
@@ -250,17 +263,17 @@ async fn new_index(counters: Data<Counters>, req: HttpRequest) -> impl Responder
         };
 
         if let Ok(start) = instance.get_typed_func::<(), ()>(&mut store, "_start") {
-            if let Err(err) = start.call(&mut store, ()) {
-                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(err.to_string());
+            if let Err(_) = start.call(&mut store, ()) {
+                continue;
             }
         }
 
+        let response = String::from_utf8((*buffer_for_result.lock()).clone());
+
         println!(
-            "Result is {:?}",
-            String::from_utf8((*buffer_for_result.lock()).clone())
+            "Result is {:?}", response
         );
-        let result = match String::from_utf8((*buffer_for_result.lock()).clone()) {
+        let result = match response {
             Ok(val) => val,
             Err(err) => {
                 return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(err.to_string())
@@ -276,7 +289,6 @@ async fn new_index(counters: Data<Counters>, req: HttpRequest) -> impl Responder
             for (k, v) in deserialized_result.custom_counters {
                 mutex.insert(k, AtomicU32::new(v));
             }
-            println!("{:?}", mutex);
         };
 
         // other modules results

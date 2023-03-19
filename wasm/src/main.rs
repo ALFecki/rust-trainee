@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 extern "C" {
@@ -21,12 +22,12 @@ pub struct CustomCounterQuery {
     a: String,
     m: String,
     e: String,
-    counter: Option<u32>,
+    // counter: Option<u32>,
 }
 
 #[derive(Deserialize)]
 pub struct CustomAdd {
-    counter: u32,
+    counter: String,
 }
 
 #[no_mangle]
@@ -50,11 +51,17 @@ pub extern "C" fn change_counters(incr: &AtomicU32, to_swap: &AtomicU32, to_add:
 
 pub extern "C" fn custom_counter(
     mut counters: Counters,
-    query: Option<CustomCounterQuery>,
-    query_to_add: Option<CustomAdd>,
+    query: &Option<CustomCounterQuery>,
+    query_to_add: &Option<CustomAdd>,
 ) -> Counters {
     let mut to_add = match query_to_add {
-        Some(val) => val.counter,
+        Some(val) => {
+            let mut res = 1;
+            if let Ok(r) = u32::from_str(val.counter.as_str()) {
+                res = r;
+            }
+            res
+        } ,
         None => 1,
     };
     if let Some(params) = query {
@@ -88,21 +95,28 @@ fn main() -> anyhow::Result<()> {
     println!("Input buf: {}", input_buf);
 
     let input_buf = input_buf.split('\0').collect::<Vec<&str>>();
-    let edited = match serde_json::from_str::<Counters>(input_buf[1]) {
-        Ok(counters) => custom_counter(
-            counters,
-            serde_qs::from_str::<CustomCounterQuery>(input_buf[0]).ok(),
-            serde_qs::from_str::<CustomAdd>(input_buf[0]).ok(),
+    let (query_custom_counter, query_custom_add) = match input_buf.first() {
+        Some(f) => (
+            serde_qs::from_str::<CustomCounterQuery>(f).ok(),
+            serde_qs::from_str::<CustomAdd>(f).ok(),
         ),
-        Err(err) => anyhow::bail!("Error deserializing input in wasm: {}", err.to_string()),
+        None => (None, None),
     };
+    let mut edited = Counters::default();
+    for str in input_buf {
+        if let Ok(counters) = serde_json::from_str::<Counters>(str) {
+            edited = custom_counter(counters, &query_custom_counter, &query_custom_add);
+            break;
+        }
+    }
     let output = match serde_json::to_vec(&edited) {
         Ok(out) => out,
         Err(err) => anyhow::bail!("Error serializing output: {}", err.to_string()),
     };
 
-    unsafe { get_output(output.as_ptr() as i32, output.len() as i32); }
-    println!("{:?}", output);
+    unsafe {
+        get_output(output.as_ptr() as i32, output.len() as i32);
+    }
     unsafe { dealloc(ptr, mem_size) };
     Ok(())
 }
