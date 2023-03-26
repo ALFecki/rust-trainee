@@ -2,12 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, Ordering};
-
-extern "C" {
-    fn get_input_size() -> i32;
-    fn set_input(ptr: i32);
-    fn get_output(ptr: i32, len: i32);
-}
+use wasm_util::*;
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Counters {
@@ -28,20 +23,6 @@ pub struct CustomCounterQuery {
 #[derive(Deserialize)]
 pub struct CustomAdd {
     counter: String,
-}
-
-#[no_mangle]
-pub extern "C" fn alloc(size: i32) -> *mut u8 {
-    let mut buf = Vec::with_capacity(size as usize);
-    let ptr = buf.as_mut_ptr();
-    std::mem::forget(buf);
-    ptr
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn dealloc(ptr: *mut u8, size: i32) {
-    let data = Vec::from_raw_parts(ptr, size as usize, size as usize);
-    std::mem::drop(data);
 }
 
 pub extern "C" fn change_counters(incr: &AtomicU32, to_swap: &AtomicU32, to_add: u32) -> u32 {

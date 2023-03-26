@@ -1,0 +1,21 @@
+[package]
+name = "calculator"
+#path = "src/calculator.rs"
+version = "0.1.0"
+edition = "2021"
+
+[target]
+[[bin]]
+name = "calculator"
+path = "src/calculator.rs"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.69"
+
+wasm_util = { version = "0.1", path = "../wasm_util"}
+
+serde = {version="1.0.152", features=["derive"]}
+serde_json = "1.0.94"
+serde_qs = "0.12.0"
+
