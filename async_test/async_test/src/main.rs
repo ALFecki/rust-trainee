@@ -1,46 +1,47 @@
-use futures::future::join_all;
-use futures::stream::FuturesUnordered;
-use futures::StreamExt;
-use std::time::Duration;
+extern crate core;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::Poll::{Pending, Ready};
+use std::task::{Context, Poll};
+use time::Instant;
+use tokio::time::Duration;
 
-async fn get_image_id(name: &str) -> i32 {
-    tokio::time::sleep(Duration::from_millis((name.len() as u64) * 100)).await;
-    name.len() as i32
-}
-
-async fn task1(names: Vec<&'static str>) {
-    let mut handles = vec![];
-    for name in names {
-        let handle = get_image_id(name);
-        // let handle = tokio::spawn( async {
-        //     get_image_id(name).await
-        // });
-        handles.push(handle);
-    }
-    // for handle in handles {
-    //     println!("{}", handle.await);
-    // }
-    let results = join_all(handles.into_iter()).await;
-    for res in results {
-        println!("{res}",);
+pub fn my_sleep(duration: Duration) -> Delay {
+    Delay {
+        duration,
+        timer: None,
     }
 }
 
-async fn task2(names: Vec<&'static str>) {
-    let mut futures = FuturesUnordered::new();
-    for name in names {
-        let handle = tokio::spawn(async { get_image_id(name).await });
-        futures.push(handle);
-    }
-    if let Some(Ok(result)) = futures.next().await {
-            println!("Get data {result}");
+pub struct Delay {
+    duration: Duration,
+    timer: Option<Instant>,
+}
+
+impl Future for Delay {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let timer = match self.timer {
+            None => Instant::now(),
+            Some(t) => t,
+        };
+        if timer.elapsed() < self.duration {
+            cx.waker().wake_by_ref();
+            self.timer = Some(timer);
+            Pending
+        } else {
+            Ready(())
+        }
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<(), ()> {
-    let names = vec!["first_name", "sname", "first_name_and_last_name"];
-    task1(names.clone()).await;
-    task2(names).await;
-    Ok(())
+async fn main() {
+    println!("hello");
+    // tokio::time::sleep()
+    let sleep = my_sleep(Duration::from_secs(2));
+    println!("Something");
+    sleep.await;
+    println!("yes");
 }
